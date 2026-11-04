@@ -1,0 +1,131 @@
+/*
+ * Tokens de diseño del panel de +vida. ÚNICA fuente de colores, fuentes,
+ * radios y sombras: los componentes usan solo estas utilidades
+ * (bg-primary, text-text-muted, rounded-card, shadow-card…).
+ *
+ * `--color-*: initial` borra la paleta por defecto de Tailwind, así que
+ * un `bg-blue-600` o un hex suelto en una clase no existe y no compila a
+ * nada. Si hace falta un color nuevo, se agrega acá.
+ *
+ * Origen de cada valor (verificado el 4 nov 2026):
+ *   web  = CSS de masvidaapp.com (/_next/static/chunks/*.css)
+ *   app  = DEMO/vida_demo/lib/theme.dart (AppColors)
+ */
+
+@theme {
+  --color-*: initial;
+  --font-*: initial;
+
+  /* ---------- Marca ---------- */
+  /* web --color-primary. La app usa #012096: es el mismo azul. */
+  --color-primary: #022196;
+  /* web --color-primary-deep: el azul de marca 78 % con negro. Barra lateral y cards destacadas. */
+  --color-primary-deep: color-mix(in oklab, #022196 78%, black);
+  /* web --color-primary-light: 8 % de azul sobre blanco. Chips, fondos de ícono. */
+  --color-primary-tint: color-mix(in oklab, #022196 8%, white);
+  /* app azulBruma: un paso más presente. Fila seleccionada, hover. */
+  --color-primary-tint-strong: #e4e9f8;
+  /* app azulSuave: bordes con color, anillo de foco. */
+  --color-primary-soft: #b9c4e8;
+  /* web --color-secondary / app azulMedio: texto e íconos de apoyo en azul. */
+  --color-secondary: #5767bc;
+
+  /* ---------- Superficies y texto ---------- */
+  --color-white: #ffffff;
+  --color-surface: #ffffff;
+  /* web --color-gray-light */
+  --color-surface-muted: #f5f6f8;
+  /* app cardBorder: inputs, separadores de tabla. */
+  --color-border: #e3e6f0;
+  /* web --color-black */
+  --color-text: #0a0a0a;
+  /* app textSecondary: 4,5:1 también sobre fondos tintados (#6B7280 no llega). */
+  --color-text-muted: #666d7a;
+
+  /* ---------- Acentos puntuales ---------- */
+  /* web --color-gold: el mejor escalón, primer puesto. Nunca como color principal. */
+  --color-accent: #f4c542;
+  /* web: el texto que va sobre el dorado. */
+  --color-on-accent: #4a3a00;
+  /* Monedas (web chip "+5 monedas", app accentSecondary). Solo para monedas. */
+  --color-coin: #f58a07;
+  --color-coin-tint: #f1e6dd;
+
+  /* ---------- Estados ---------- */
+  --color-success: #16a34a; /* web */
+  --color-success-tint: #e6f5ec;
+  --color-danger: #b3261e; /* app peligro: solo destruir o revertir */
+  --color-danger-tint: #f9e7e6;
+  --color-warning: #765d00; /* app tintaOro, legible sobre blanco */
+  --color-warning-tint: #fdf3d3;
+
+  /* ---------- Escalones de pasos (app aro*, web tabla de pasos) ---------- */
+  /* Solo donde se muestren escalones. Nunca como decoración. */
+  --color-tier-0: #6e4e2e; /* bronce/café · menos de 7.000 · 0 pts */
+  --color-tier-0-hi: #8a6540;
+  --color-tier-25: #6f7b84; /* plata/gris · 7.000–9.999 · 25 pts */
+  --color-tier-25-hi: #8c99a2;
+  --color-tier-50: #e0aa00; /* oro · 10.000–14.999 · 50 pts */
+  --color-tier-50-hi: #ffd700;
+  --color-on-tier-50: #4a3a00;
+
+  /* ---------- Niveles de cashback (app nivel1–4) ---------- */
+  /* La app los pinta con la escala del azul: se separan por luminosidad. */
+  --color-level-1: #7c90d4;
+  --color-level-2: #5468bc;
+  --color-level-3: #2c41a6;
+  --color-level-4: #012096;
+
+  /* ---------- Tipografía ---------- */
+  /* Títulos y números grandes: Poppins (web). Texto, tablas y formularios: Manrope (app). */
+  --font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* ---------- Radios ---------- */
+  --radius-card: 1.75rem; /* web: cards grandes, 28 px */
+  --radius-inner: 1rem; /* web rounded-2xl: filas y bloques dentro de una card */
+  --radius-field: 0.875rem; /* inputs */
+
+  /* ---------- Sombras ---------- */
+  /* app AppSombras.tarjeta: una sola capa, azul casi invisible. */
+  --shadow-card: 0 6px 24px rgb(2 33 150 / 0.06);
+  --shadow-pop: 0 24px 64px -16px rgb(2 14 70 / 0.35);
+}
+
+@layer base {
+  :root {
+    /* El degradado del login: web, de azul marino a azul rey. */
+    --gradient-brand: linear-gradient(180deg, var(--color-primary-deep), var(--color-primary));
+    /* web: banner de "Cashback" y La Liga. */
+    --gradient-banner: linear-gradient(90deg, #0022a1, #0b30ac 25%, #183fb8 50%, #2147bc 75%, #1640b8);
+    /* app aroGalactico: tramo de 15.000 pasos o más (100 pts). */
+    --gradient-tier-100: linear-gradient(90deg, #2a1b5e, #6a2fa0, #c13ba6, #ff6b4a, #ffd700, #3fa9f5, #2a1b5e);
+    color-scheme: light;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    background: var(--color-surface-muted);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "tnum" 0;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-surface-muted);
+    font-size: 0.875rem;
+    line-height: 1.45;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-primary-tint-strong);
+  }
+}
+
