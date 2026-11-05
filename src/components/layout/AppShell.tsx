@@ -48,7 +48,7 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
   {
     group: 'Sistema',
     items: [
-      { to: '/reglas', label: 'Reglas y configuración', icon: SlidersHorizontal },
+      { to: '/reglas', label: 'Reglas de puntaje', icon: SlidersHorizontal },
       { to: '/bitacora', label: 'Bitácora', icon: History, permiso: 'ver_bitacora' },
     ],
   },

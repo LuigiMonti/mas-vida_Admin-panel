@@ -216,7 +216,7 @@ function Diagnostico({ s }: { s: SoporteSync }) {
   if (dias === null) avisos.push({ tone: 'danger', texto: 'Nunca ha sincronizado. Revisa que haya dado permiso a Salud y que haya abierto la app.' });
   else if (dias >= 3) avisos.push({ tone: 'danger', texto: `No sincroniza desde hace ${dias} días. El sync corre al abrir la app: pídele que la abra. Pasados 14 días, esos días ya no se pueden recuperar.` });
   if (s.app_version && s.app_version !== VERSION_ACTUAL_APP) avisos.push({ tone: 'warning', texto: `Tiene la versión ${s.app_version}; la actual es ${VERSION_ACTUAL_APP}.` });
-  if (s.dispositivos.length > 0 && !s.dispositivos.some((d) => d.tipo === 'reloj')) avisos.push({ tone: 'info', texto: 'No tiene reloj: sus workouts no cuentan (un workout necesita ritmo cardíaco).' });
+  if (s.dispositivos.length > 0 && !s.dispositivos.some((d) => d.mide_ritmo)) avisos.push({ tone: 'info', texto: 'No ha llegado ningún dispositivo con ritmo cardíaco: sus workouts no cuentan.' });
   if (s.descartadas.sesiones_sin_ritmo_cardiaco > 0) avisos.push({ tone: 'info', texto: `Se descartaron ${s.descartadas.sesiones_sin_ritmo_cardiaco} sesiones sin ritmo cardíaco (escritas a mano en Salud o sin reloj).` });
   if (dias !== null && dias < 3 && ausentes > 0) avisos.push({ tone: 'warning', texto: `${ausentes} de los últimos 14 días llegaron sin datos.` });
   if (avisos.length === 0) avisos.push({ tone: 'success', texto: 'El sync está al día y sin días ausentes.' });

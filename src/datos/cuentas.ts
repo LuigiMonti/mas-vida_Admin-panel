@@ -103,6 +103,8 @@ export interface Dispositivo {
   modelo: string;
   tipo: 'telefono' | 'reloj' | 'anillo' | 'desconocido';
   fuente_bundle: string;
+  /** Mandó muestras de ritmo cardíaco: sus workouts cuentan (cualquier marca). */
+  mide_ritmo: boolean;
   ultima_muestra: string;
 }
 
@@ -252,6 +254,7 @@ const IPHONE = (nombre: string, ultima: string): Dispositivo => ({
   modelo: 'iPhone',
   tipo: 'telefono',
   fuente_bundle: 'com.apple.health',
+  mide_ritmo: false,
   ultima_muestra: ultima,
 });
 const WATCH = (nombre: string, ultima: string): Dispositivo => ({
@@ -259,6 +262,7 @@ const WATCH = (nombre: string, ultima: string): Dispositivo => ({
   modelo: 'Watch',
   tipo: 'reloj',
   fuente_bundle: 'com.apple.health',
+  mide_ritmo: true,
   ultima_muestra: ultima,
 });
 
