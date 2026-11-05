@@ -1,61 +1,57 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router';
 import {
-  BadgePercent,
   CalendarCheck,
-  ChartColumn,
+  CalendarClock,
   FileCheck2,
-  Gift,
-  Handshake,
+  History,
   House,
   Menu,
-  Palette,
-  ShieldAlert,
-  Trophy,
+  RotateCcw,
+  SlidersHorizontal,
   Users,
-  Wallet,
   X,
   type LucideIcon,
 } from 'lucide-react';
 import { cx } from '@/lib/cx';
 import { Avatar } from '@/components/ui/Progress';
 import { SearchInput } from '@/components/ui/Field';
+import { NOMBRE_ROL, puede, sesionActual, type Accion } from '@/datos/sesion';
 
 interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
+  /** Si hace falta un permiso para verlo. */
+  permiso?: Accion;
 }
 
-// Orden y nombres de las secciones de panel-admin.md.
+// Lo imprescindible para el piloto. Lo post-piloto (comercios, La Liga,
+// reporte a la aseguradora, Plan Empresarial) no va en el menú todavía.
 export const NAV: Array<{ group?: string; items: NavItem[] }> = [
   { items: [{ to: '/', label: 'Inicio', icon: House }] },
   {
-    group: 'Cuentas',
+    group: 'Usuarios',
     items: [
       { to: '/usuarios', label: 'Usuarios', icon: Users },
       { to: '/polizas', label: 'Pólizas', icon: FileCheck2 },
-      { to: '/puntos-monedas', label: 'Puntos y monedas', icon: Wallet },
+      { to: '/retroactivo', label: 'Retroactivo denegado', icon: RotateCcw },
     ],
   },
   {
-    group: 'Juego',
+    group: 'Objetivo semanal',
     items: [
-      { to: '/objetivo-semanal', label: 'Objetivo semanal', icon: CalendarCheck },
-      { to: '/liga', label: 'La Liga', icon: Trophy },
-      { to: '/premios', label: 'Premios y cupones', icon: Gift },
-      { to: '/patrocinios', label: 'Patrocinios', icon: Handshake },
+      { to: '/objetivos', label: 'Semanas y metas', icon: CalendarCheck },
+      { to: '/cierres', label: 'Estado del cierre', icon: CalendarClock },
     ],
   },
   {
-    group: 'Operación',
+    group: 'Sistema',
     items: [
-      { to: '/reportes', label: 'Aseguradora', icon: ChartColumn },
-      { to: '/antifraude', label: 'Antifraude', icon: ShieldAlert },
-      { to: '/cashback', label: 'Cashback', icon: BadgePercent },
+      { to: '/reglas', label: 'Reglas y configuración', icon: SlidersHorizontal },
+      { to: '/bitacora', label: 'Bitácora', icon: History, permiso: 'ver_bitacora' },
     ],
   },
-  { group: 'Diseño', items: [{ to: '/estilo', label: 'Guía de estilo', icon: Palette }] },
 ];
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
@@ -68,7 +64,7 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       {NAV.map((g, i) => (
         <div key={i} className="flex flex-col gap-0.5">
           {g.group && <div className="px-3 pb-1.5 text-[11px] font-bold tracking-[0.1em] text-white/50 uppercase">{g.group}</div>}
-          {g.items.map((it) => (
+          {g.items.filter((it) => !it.permiso || puede(it.permiso)).map((it) => (
             <NavLink
               key={it.to}
               to={it.to}
@@ -115,10 +111,10 @@ function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
         <SearchInput placeholder="Buscar usuario, usuario_id o póliza" className="w-full max-w-md" aria-label="Buscar" />
         <div className="ml-auto flex items-center gap-3">
           <div className="hidden text-right sm:block">
-            <div className="text-[13px] font-semibold">Equipo +vida</div>
-            <div className="text-[12px] text-text-muted">Administrador</div>
+            <div className="text-[13px] font-semibold">{sesionActual.nombre}</div>
+            <div className="text-[12px] text-text-muted">{NOMBRE_ROL[sesionActual.rol]}</div>
           </div>
-          <Avatar name="Equipo Vida" seed="admin" />
+          <Avatar name={sesionActual.nombre} seed={sesionActual.correo} />
         </div>
       </div>
       {tabs && <div className="flex gap-6 overflow-x-auto px-6">{tabs}</div>}
