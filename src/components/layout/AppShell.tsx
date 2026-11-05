@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useNavigate } from 'react-router';
 import {
   CalendarCheck,
   CalendarClock,
@@ -48,7 +48,7 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
   {
     group: 'Sistema',
     items: [
-      { to: '/reglas', label: 'Reglas y configuración', icon: SlidersHorizontal },
+      { to: '/reglas', label: 'Reglas de puntaje', icon: SlidersHorizontal },
       { to: '/bitacora', label: 'Bitácora', icon: History, permiso: 'ver_bitacora' },
     ],
   },
@@ -95,6 +95,7 @@ interface HeaderProps {
 }
 
 function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
+  const ir = useNavigate();
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-surface">
       <div className="flex h-16 items-center gap-4 px-6">
@@ -108,7 +109,17 @@ function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
         >
           <Menu size={20} />
         </button>
-        <SearchInput placeholder="Buscar usuario, usuario_id o póliza" className="w-full max-w-md" aria-label="Buscar" />
+        <form
+          role="search"
+          className="w-full max-w-md"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const q = String(new FormData(e.currentTarget).get('q') ?? '').trim();
+            ir(q ? `/usuarios?q=${encodeURIComponent(q)}` : '/usuarios');
+          }}
+        >
+          <SearchInput name="q" placeholder="Buscar usuario, usuario_id o póliza" aria-label="Buscar" />
+        </form>
         <div className="ml-auto flex items-center gap-3">
           <div className="hidden text-right sm:block">
             <div className="text-[13px] font-semibold">{sesionActual.nombre}</div>

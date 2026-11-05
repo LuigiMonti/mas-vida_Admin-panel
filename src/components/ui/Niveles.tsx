@@ -71,6 +71,25 @@ export function TierRow({ pts }: { pts: Escalon }) {
   );
 }
 
+const ORDEN_ESCALONES: Escalon[] = [0, 25, 50, 100];
+
+/**
+ * Fila de escalón con sus propios valores (los de una versión de reglas).
+ * El color va por la posición del tramo (1.º café … 4.º arcoíris), no por los puntos.
+ */
+export function TierRowValores({ indice, rango: texto, puntos }: { indice: number; rango: string; puntos: number }) {
+  const s = tierStyle[ORDEN_ESCALONES[Math.min(indice, 3)]!];
+  return (
+    <div
+      className={cx('flex items-center justify-between gap-3 rounded-inner px-4 py-2.5', s.fg)}
+      style={{ backgroundImage: s.bg, textShadow: '0 1px 2px rgb(0 0 0 / 0.18)' }}
+    >
+      <span className="text-[14px] font-semibold">{texto}</span>
+      <span className="font-display text-lg font-bold tabular-nums">{puntos}</span>
+    </div>
+  );
+}
+
 export type Nivel = 0 | 1 | 2 | 3 | 4;
 
 export const NIVELES: Array<{ nivel: Nivel; desde: number; hasta?: number; cashback: string }> = [
