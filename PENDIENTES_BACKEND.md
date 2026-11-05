@@ -132,15 +132,23 @@ pierden.
       se llaman desde ningún lado (la fuente se elige por pasos y puntos, y
       un workout cuenta con ritmo cardíaco de cualquier marca).
 
-## 6. Cierres y bitácora (A48, por construir)
+## 6. Cierres y bitácora (A48)
 
 - [ ] **Registro de cada corrida del programador** (cierre semanal,
       corrección, La Liga, podio): cuándo empezó, cuándo terminó, si falló y
       el error. Hoy solo queda en el log del servicio, y es el punto ciego del
       piloto.
+- [ ] **Latido del programador**: que el proceso guarde cada minuto o dos
+      "sigo vivo". Si pasan más de 10 min sin latido, el panel avisa que el
+      servicio está caído (hoy no hay healthcheck).
+- [ ] `GET /api/v1/admin/cierres`: las corridas (más nuevas primero), el
+      último latido, las próximas corridas y si hay un cierre en curso
+      (el candado tomado). Forma: `src/datos/cierres.ts`.
 - [ ] `POST /api/v1/admin/cierres/semana` = `cerrar_semana --ponerse-al-dia`,
-      respetando el candado de PostgreSQL ("Hay otro cierre en curso").
-- [ ] `GET /api/v1/admin/bitacora?objetivo=`.
+      respetando el candado de PostgreSQL ("Hay otro cierre en curso"). Como
+      un cierre tarda, conviene que responda enseguida y el panel consulte
+      el estado, en vez de esperar la respuesta. Solo `admin`.
+- [ ] `GET /api/v1/admin/bitacora?accion=&q=`.
 
 ---
 
