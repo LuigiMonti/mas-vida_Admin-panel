@@ -1,3 +1,5 @@
+import { ultimaCorrida } from './cierres';
+import { contarSemanasPendientes } from './objetivos';
 import { simularRed } from './red';
 
 /**
@@ -27,20 +29,24 @@ export interface ResumenPanel {
 }
 
 export function obtenerResumen(): Promise<ResumenPanel> {
-  return simularRed({
-    usuarios_activos: 84,
-    usuarios_total: 100,
-    polizas_verificadas: 61,
-    polizas_pendientes: 7,
-    pendiente_mas_vieja_dias: 3,
-    objetivo: { semana: 44, cumplieron: 37, evaluados: 92 },
-    monedas: { emitidas: 4310, vencidas: 2875, season: 'Season 4 · 2026' },
-    cierre: {
-      ultima_corrida: '2026-11-03T00:02:00-06:00',
-      ultima_corrida_ok: true,
-      semanas_pendientes: 0,
-      proximo: 'Martes 10 nov · 00:00',
-    },
-    version_regla_activa: 'v1.2',
+  return simularRed(() => {
+    // El estado del cierre sale del mismo mock que la pantalla de cierres.
+    const ultima = ultimaCorrida();
+    return {
+      usuarios_activos: 84,
+      usuarios_total: 100,
+      polizas_verificadas: 61,
+      polizas_pendientes: 7,
+      pendiente_mas_vieja_dias: 3,
+      objetivo: { semana: 44, cumplieron: 37, evaluados: 92 },
+      monedas: { emitidas: 4310, vencidas: 2875, season: 'Season 4 · 2026' },
+      cierre: {
+        ultima_corrida: ultima?.empezo ?? null,
+        ultima_corrida_ok: ultima?.estado !== 'fallo',
+        semanas_pendientes: contarSemanasPendientes(),
+        proximo: 'Martes 10 nov · 00:00',
+      },
+      version_regla_activa: 'v3',
+    };
   });
 }

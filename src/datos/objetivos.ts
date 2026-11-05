@@ -226,3 +226,24 @@ export function guardarMetasPorEdad(filas: MetaPasosPorEdad[]): Promise<void> {
     registrar('editar_objetivo', 'Metas de pasos por edad', `Antes: ${antes}. Ahora: ${metasPorEdad.map((m) => `${m.edad_desde}+: ${m.meta_pasos}`).join(', ')}`);
   });
 }
+
+/**
+ * Lo que hace cerrar_semana --ponerse-al-dia sobre el mock: marca como
+ * cerradas las semanas que ya pasaron su margen y no se cerraron.
+ * Devuelve cuáles cerró. Lo llama src/datos/cierres.ts, no las pantallas.
+ */
+export function cerrarSemanasPendientes(): string[] {
+  const cerradas: string[] = [];
+  for (const o of objetivos.values()) {
+    if (estadoDe(o.fecha_inicio, o) === 'pendiente_cierre') {
+      o.cerrado_en = HOY;
+      cerradas.push(`semana del ${o.fecha_inicio}`);
+    }
+  }
+  return cerradas;
+}
+
+/** Cuántas semanas ya pasaron su margen y no se cerraron. Para el inicio. */
+export function contarSemanasPendientes(): number {
+  return [...objetivos.values()].filter((o) => estadoDe(o.fecha_inicio, o) === 'pendiente_cierre').length;
+}
