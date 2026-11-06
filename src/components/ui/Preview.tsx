@@ -109,32 +109,38 @@ export function PremioCard({ nombre, categoria, costoMonedas, logoUrl, comercio,
 
 interface LigaBannerProps {
   mes: string;
+  /** El nombre del mes ("Liga Nike"). Vacío = "Compite por puntos del mes". */
+  nombre?: string;
   /** Monedas del podio: 1.º, 2.º, 3.º. */
   podio: [number, number, number];
-  patrocinador?: string;
+  /** El cupón que suma el patrocinador al podio. */
+  cuponPatrocinador?: { comercio: string; cupon: string; logo?: string; fondo?: string };
   cierre: string;
 }
 
-/** Banner de La Liga del mes, con el degradado de la web. */
-export function LigaBanner({ mes, podio, patrocinador, cierre }: LigaBannerProps) {
+/** Banner de La Liga del mes: "La Liga · noviembre" arriba y el nombre del mes abajo. */
+export function LigaBanner({ mes, nombre, podio, cuponPatrocinador, cierre }: LigaBannerProps) {
   return (
     <div className="relative overflow-hidden rounded-card p-6 text-white" style={{ backgroundImage: 'var(--gradient-banner)' }}>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <div className="text-[12px] font-bold tracking-[0.12em] text-white/70 uppercase">La Liga · {mes}</div>
-          <h3 className="mt-1 font-display text-2xl font-bold tracking-tight">
-            {patrocinador ? (
-              <>
-                Presentada por <span className="text-accent">{patrocinador}</span>
-              </>
-            ) : (
-              'Compite por puntos del mes'
-            )}
-          </h3>
+          <h3 className="mt-1 font-display text-2xl font-bold tracking-tight break-words">{nombre?.trim() || 'Compite por puntos del mes'}</h3>
           <p className="mt-1 text-[13px] text-white/75">{cierre}</p>
         </div>
-        <Trophy size={28} className="text-accent" aria-hidden />
+        {cuponPatrocinador?.logo ? (
+          <span className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-full bg-white p-1.5" style={cuponPatrocinador.fondo ? { background: cuponPatrocinador.fondo } : undefined}>
+            <img src={cuponPatrocinador.logo} alt={cuponPatrocinador.comercio} className="max-h-full max-w-full object-contain" />
+          </span>
+        ) : (
+          <Trophy size={28} className="text-accent" aria-hidden />
+        )}
       </div>
+      {cuponPatrocinador && (
+        <p className="mt-3 inline-flex rounded-full bg-white/12 px-3 py-1 text-[12.5px] font-semibold">
+          El podio también gana: {cuponPatrocinador.cupon} en {cuponPatrocinador.comercio}
+        </p>
+      )}
       <ol className="mt-5 grid grid-cols-3 gap-2">
         {podio.map((m, i) => (
           <li key={i} className={cx('rounded-inner px-3 py-2.5', i === 0 ? 'bg-accent text-on-accent' : 'bg-white/12')}>

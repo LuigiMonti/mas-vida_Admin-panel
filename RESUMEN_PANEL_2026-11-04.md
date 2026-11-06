@@ -23,13 +23,12 @@ para conectar el panel está aparte, en `PENDIENTES_BACKEND.md`.
   push los hace Luis.
 
 ### Alcance
-- **Se construye solo lo imprescindible para el piloto:** usuarios y pólizas,
-  retroactivo denegado, objetivo semanal y su cierre, ledger de solo lectura,
-  soporte de sync, reglas y bitácora.
-- **Queda para después del piloto:** comercios y premios, cupones, La Liga
-  (incluido su nombre por mes, por ejemplo "Liga Nike" debajo de "La Liga ·
-  noviembre") y las **estadísticas de canje** (cuánto se ha canjeado cada
-  cupón).
+- **Se construye todo** (6 nov). Ya no se separa "piloto" de "post-piloto".
+  Primero se hizo lo de uso diario (usuarios y pólizas, retroactivo denegado,
+  objetivo semanal y su cierre, ledger, soporte de sync, reglas y bitácora), y
+  después premios, cupones, La Liga (con su nombre por mes, por ejemplo "Liga
+  Nike" debajo de "La Liga · noviembre"), las **estadísticas de canje** y los
+  patrocinios.
 - **Salieron del plan:**
   - El reporte a la aseguradora (Excel mensual y de cierre anual). Lo
     reemplazan las estadísticas de canje.
@@ -85,9 +84,10 @@ para conectar el panel está aparte, en `PENDIENTES_BACKEND.md`.
 | `A47-admin-polizas-usuarios` | `373f436` | Usuarios, ficha de cuenta, pólizas, retroactivo denegado y bitácora (datos) |
 | `A46-admin-objetivos-liga` | `f10b96e` | Semanas y metas, y reglas de puntaje |
 | `A48-admin-cierres-auditoria` | `f6e8ae8` | Estado del cierre y bitácora (pantalla) |
-| `A45-admin-premios-cupones` | — | En pausa (post-piloto) |
+| `A49-admin-cliente-api` | `cdeeb87` | Cliente de API (token de knox, errores de DRF), interruptor mock/API por sección, login real, rutas protegidas y tests |
+| `A45-admin-premios-cupones` | — | Premios, cupones, estadísticas de canje, La Liga, patrocinios, página 404, "Ver como" para demos y carga de pantallas por separado |
 
-Cada branch sale de la anterior: A44 → A47 → A46 → A48.
+Cada branch sale de la anterior: A44 → A47 → A46 → A48 → A49 → A45.
 
 ### Inicio (`/`)
 - **Métricas:** usuarios activos, % con póliza verificada, cuántos cumplieron
@@ -158,7 +158,46 @@ Cada branch sale de la anterior: A44 → A47 → A46 → A48.
 - Todas las acciones del panel, con filtros por grupo y buscador. Solo admin.
 
 ### Login (`/login`)
-- Solo el diseño. Todavía no se conecta.
+- Entra con la cuenta del equipo y vuelve a la página donde estabas. Sin sesión,
+  cualquier página lleva aquí. Con datos de muestra entra cualquier correo; uno
+  que empieza con "soporte" entra como soporte.
+
+### Premios (`/premios`)
+- **Lista** del catálogo real de la app (28 premios con sus logos), con
+  buscador, filtro por categoría y por estado (activos, vencidos, archivados),
+  cuántos se canjearon y el cupo.
+- **Crear y editar** con la card de la Tienda y su detalle en vivo. Archivar en
+  vez de borrar.
+- **Importar catálogo** con el mismo JSON de `importar_premios`: primero dice
+  qué va a crear y actualizar; si uno viene mal, no guarda nada.
+
+### Cupones (`/cupones`)
+- **Validar un cupón:** se escribe el código que muestra la persona en la caja
+  y se marca como usado (soporte también puede). No deja usar uno ya usado ni
+  uno vencido.
+- **Lista** con filtros por estado y origen (tienda, semana patrocinada, La
+  Liga). La ficha de cada usuario tiene su pestaña de cupones.
+
+### Estadísticas de canje (`/estadisticas`)
+- Por periodo: cupones canjeados, % usados en el comercio, % que se dejaron
+  vencer y monedas gastadas; canjes por día; de dónde salen; y cada premio con
+  sus canjes, usos, vencidos y lo que le queda de cupo.
+
+### La Liga (`/liga`)
+- **Los meses** con su estado (por venir, en curso, por pagar, pagado).
+- **Nombre de cada mes** con el banner de la app en vivo: "La Liga · noviembre"
+  arriba y "Liga Sportcity" abajo. Sugiere el nombre del patrocinador. Un mes
+  cerrado ya no se renombra.
+- **Monedas del podio** (valen para los meses que no se cerraron) y la tabla
+  del mes, provisional o final, con los desempates.
+
+### Patrocinios (`/patrocinios`)
+- **Calendario** de las semanas de la season y los meses de La Liga, vendidos y
+  libres, y los premios destacados.
+- **Vender** con las mismas reglas del backend (semana de lunes a domingo, mes
+  del 1 al último, cupón obligatorio, sin vender dos veces lo mismo) y
+  **apagar**.
+- **Reporte para el comercio:** cuántos ganaron su cupón y cuántos lo usaron.
 
 ---
 
@@ -168,21 +207,17 @@ Cada branch sale de la anterior: A44 → A47 → A46 → A48.
 - **Estilo:** `src/styles/tokens.css` es la única fuente de colores, fuentes,
   radios y sombras. La paleta por defecto de Tailwind está apagada.
 - **Componentes:** están en `src/components/ui/`.
-- **Datos:** `src/datos/` tiene un archivo por tema (`cuentas`, `objetivos`,
-  `reglas`, `cierres`, `bitacora`, `resumen`, `sesion`). Son mocks en memoria
-  y vuelven a los datos de muestra al recargar. Cada función dice qué endpoint
-  la va a reemplazar.
+- **Datos:** `src/datos/` tiene un archivo por tema. Cada función llama a su
+  endpoint si su sección está conectada en `.env.local`; si no, usa datos de
+  muestra en memoria, que vuelven a su estado inicial al recargar.
 - **Rutas:** cada sección define las suyas en `src/pages/<sección>/rutas.tsx`.
-- **Ver el panel como soporte:** cambiar `rol` en `src/datos/sesion.ts`.
+- **Ver el panel como soporte:** con datos de muestra, "Ver como" en el header.
+- **Tests:** `npm test`.
 
 ---
 
 ## 4. Pendiente
 
-- [ ] **Push** de `A44-admin-base` (va 1 commit adelante de origin) y de
-      `A48-admin-cierres-auditoria` (va 5 adelante).
-- [ ] **Juntar las branches en `dev`** cuando las revisen.
-- [ ] **Login real del panel y conexión con la API:** ver
-      `PENDIENTES_BACKEND.md`.
-- [ ] **Post-piloto:** premios y cupones, La Liga (con su nombre por mes) y las
-      estadísticas de canje.
+- [ ] **Juntar A49 y A45 en `dev`** cuando las revisen.
+- [ ] **Conexión con la API:** los endpoints de `PENDIENTES_BACKEND.md`. Cada
+      uno que exista se conecta agregando su sección en `VITE_DATOS_API`.

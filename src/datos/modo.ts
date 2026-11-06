@@ -11,9 +11,36 @@
  * de PENDIENTES_BACKEND.md.
  */
 
-export type Seccion = 'sesion' | 'resumen' | 'usuarios' | 'polizas' | 'retroactivo' | 'objetivos' | 'reglas' | 'cierres' | 'bitacora';
+export type Seccion =
+  | 'sesion'
+  | 'resumen'
+  | 'usuarios'
+  | 'polizas'
+  | 'retroactivo'
+  | 'objetivos'
+  | 'reglas'
+  | 'cierres'
+  | 'bitacora'
+  | 'premios'
+  | 'cupones'
+  | 'liga'
+  | 'patrocinios';
 
-export const SECCIONES: readonly Seccion[] = ['sesion', 'resumen', 'usuarios', 'polizas', 'retroactivo', 'objetivos', 'reglas', 'cierres', 'bitacora'];
+export const SECCIONES: readonly Seccion[] = [
+  'sesion',
+  'resumen',
+  'usuarios',
+  'polizas',
+  'retroactivo',
+  'objetivos',
+  'reglas',
+  'cierres',
+  'bitacora',
+  'premios',
+  'cupones',
+  'liga',
+  'patrocinios',
+];
 
 interface Config {
   todo: boolean;

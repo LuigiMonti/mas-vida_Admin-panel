@@ -21,14 +21,19 @@ const ACCION: Record<TipoAccion, { label: string; tone: ChipTone }> = {
   editar_objetivo: { label: 'Objetivo semanal', tone: 'primary' },
   correr_cierre: { label: 'Corrió un cierre', tone: 'primary' },
   editar_reglas: { label: 'Reglas de puntaje', tone: 'primary' },
+  editar_premio: { label: 'Premios', tone: 'coin' },
+  marcar_cupon: { label: 'Cupón usado', tone: 'success' },
+  editar_liga: { label: 'La Liga', tone: 'primary' },
+  editar_patrocinio: { label: 'Patrocinio', tone: 'coin' },
 };
 
-type Grupo = 'todas' | 'polizas' | 'ajustes' | 'config';
+type Grupo = 'todas' | 'polizas' | 'ajustes' | 'premios' | 'config';
 const GRUPOS: Record<Grupo, { label: string; acciones?: TipoAccion[] }> = {
   todas: { label: 'Todas' },
   polizas: { label: 'Pólizas', acciones: ['verificar_poliza', 'rechazar_poliza'] },
   ajustes: { label: 'Ajustes', acciones: ['ajuste_puntos', 'ajuste_monedas'] },
-  config: { label: 'Configuración y cierres', acciones: ['editar_objetivo', 'editar_reglas', 'correr_cierre'] },
+  premios: { label: 'Premios y cupones', acciones: ['editar_premio', 'marcar_cupon', 'editar_patrocinio'] },
+  config: { label: 'Configuración y cierres', acciones: ['editar_objetivo', 'editar_reglas', 'correr_cierre', 'editar_liga'] },
 };
 
 const COLUMNAS: Column<EntradaBitacora>[] = [

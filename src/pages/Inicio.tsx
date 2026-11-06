@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router';
-import { CalendarCheck, CalendarClock, Coins, FileCheck2, Search, ShieldCheck, Target, Users } from 'lucide-react';
+import { CalendarCheck, CalendarClock, Coins, FileCheck2, Gift, ScanLine, Search, ShieldCheck, Target, Trophy, Users } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, MetricCard } from '@/components/ui/Card';
 import { PageTitle } from '@/components/ui/PageTitle';
@@ -115,6 +115,15 @@ export function Inicio() {
                 </Button>
                 <Button variant="secondary" size="sm" icon={CalendarCheck} onClick={() => ir('/objetivos')}>
                   Semanas y metas
+                </Button>
+                <Button variant="secondary" size="sm" icon={ScanLine} onClick={() => ir('/cupones')}>
+                  Validar cupón
+                </Button>
+                <Button variant="secondary" size="sm" icon={Gift} onClick={() => ir('/premios/nuevo')}>
+                  Nuevo premio
+                </Button>
+                <Button variant="secondary" size="sm" icon={Trophy} onClick={() => ir('/liga')}>
+                  La Liga del mes
                 </Button>
               </div>
             </Card>

@@ -3,6 +3,11 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import {
   CalendarCheck,
   CalendarClock,
+  ChartColumn,
+  Gift,
+  Handshake,
+  Ticket,
+  Trophy,
   FileCheck2,
   History,
   House,
@@ -17,8 +22,8 @@ import {
 import { cx } from '@/lib/cx';
 import { Avatar } from '@/components/ui/Progress';
 import { SearchInput } from '@/components/ui/Field';
-import { resumenModo } from '@/datos/modo';
-import { cerrarSesion, NOMBRE_ROL, puede, useSesion, type Accion } from '@/datos/sesion';
+import { conectado, resumenModo } from '@/datos/modo';
+import { cambiarRolDeMuestra, cerrarSesion, NOMBRE_ROL, puede, useSesion, type Accion, type Rol } from '@/datos/sesion';
 
 interface NavItem {
   to: string;
@@ -28,8 +33,6 @@ interface NavItem {
   permiso?: Accion;
 }
 
-// Lo imprescindible para el piloto. Lo post-piloto (comercios, La Liga,
-// reporte a la aseguradora, Plan Empresarial) no va en el menú todavía.
 export const NAV: Array<{ group?: string; items: NavItem[] }> = [
   { items: [{ to: '/', label: 'Inicio', icon: House }] },
   {
@@ -41,10 +44,20 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
     ],
   },
   {
-    group: 'Objetivo semanal',
+    group: 'Juego',
     items: [
       { to: '/objetivos', label: 'Semanas y metas', icon: CalendarCheck },
       { to: '/cierres', label: 'Estado del cierre', icon: CalendarClock },
+      { to: '/liga', label: 'La Liga', icon: Trophy },
+    ],
+  },
+  {
+    group: 'Premios',
+    items: [
+      { to: '/premios', label: 'Premios', icon: Gift },
+      { to: '/cupones', label: 'Cupones', icon: Ticket },
+      { to: '/estadisticas', label: 'Estadísticas de canje', icon: ChartColumn },
+      { to: '/patrocinios', label: 'Patrocinios', icon: Handshake },
     ],
   },
   {
@@ -129,7 +142,7 @@ function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
         <div className="ml-auto flex items-center gap-3">
           {modo !== 'api' && (
             <span
-              className="hidden rounded-full bg-warning-tint px-2.5 py-0.5 text-[12px] font-semibold text-warning md:inline"
+              className="hidden rounded-full bg-warning-tint px-2.5 py-0.5 text-[12px] font-semibold whitespace-nowrap text-warning lg:inline"
               title="Configurado en .env con VITE_DATOS y VITE_DATOS_API"
             >
               {modo === 'mock' ? 'Datos de muestra' : 'Parte con datos de muestra'}
@@ -139,7 +152,21 @@ function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
             <>
               <div className="hidden text-right sm:block">
                 <div className="text-[13px] font-semibold">{sesion.nombre}</div>
-                <div className="text-[12px] text-text-muted">{NOMBRE_ROL[sesion.rol]}</div>
+                {conectado('sesion') ? (
+                  <div className="text-[12px] text-text-muted">{NOMBRE_ROL[sesion.rol]}</div>
+                ) : (
+                  // Solo con datos de muestra: ver el panel como el otro rol, para demos.
+                  <select
+                    aria-label="Ver como"
+                    title="Solo con datos de muestra: cambia el rol para ver el panel como lo ve el otro."
+                    value={sesion.rol}
+                    onChange={(e) => cambiarRolDeMuestra(e.target.value as Rol)}
+                    className="cursor-pointer rounded bg-transparent text-right text-[12px] text-text-muted outline-none hover:text-primary"
+                  >
+                    <option value="admin">Ver como administrador</option>
+                    <option value="soporte">Ver como soporte</option>
+                  </select>
+                )}
               </div>
               <Avatar name={sesion.nombre} seed={sesion.correo} />
               <button
@@ -186,6 +213,7 @@ export function AppShell({ tabs }: { tabs?: ReactNode }) {
   const [fija, setFija] = useState(false);
   // Tablet: la barra se abre encima del contenido.
   const [menu, setMenu] = useState(false);
+  const rol = useSesion()?.rol;
 
   const alternar = () => {
     if (esEscritorio()) setFija((v) => !v);
@@ -226,7 +254,8 @@ export function AppShell({ tabs }: { tabs?: ReactNode }) {
       <div className="min-w-0 flex-1">
         <Header tabs={tabs} menuOpen={fija || menu} onToggleMenu={alternar} />
         <main className="mx-auto max-w-[1280px] px-6 py-8">
-          <Outlet />
+          {/* Si cambia el rol, la página se vuelve a armar con sus permisos. */}
+          <Outlet key={rol} />
         </main>
       </div>
     </div>

@@ -15,7 +15,11 @@ export type TipoAccion =
   | 'ajuste_monedas'
   | 'editar_objetivo'
   | 'correr_cierre'
-  | 'editar_reglas';
+  | 'editar_reglas'
+  | 'editar_premio'
+  | 'marcar_cupon'
+  | 'editar_liga'
+  | 'editar_patrocinio';
 
 export interface EntradaBitacora {
   id: number;

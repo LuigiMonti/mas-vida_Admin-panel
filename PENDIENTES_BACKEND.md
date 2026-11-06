@@ -169,10 +169,66 @@ pierden.
       el estado, en vez de esperar la respuesta. Solo `admin`.
 - [ ] `GET /api/v1/admin/bitacora?accion=&q=`.
 
----
+## 7. Premios (A45)
 
-## Post-piloto (no ahora)
+Forma: `src/datos/premios.ts`. Sección `premios` en `VITE_DATOS_API`.
 
-- `LigaMensual.nombre`: nombre por mes ("Liga Nike") debajo de "La Liga ·
-  noviembre".
-- Estadísticas de canje: cuánto se ha canjeado cada cupón.
+- [ ] `GET /api/v1/admin/premios?q=&categoria=&estado=` (`activos`, `vencidos`,
+      `apagados`): cada premio con `canjeados`, `usados` y `destacado` (si
+      tiene un patrocinio destacado vigente).
+- [ ] `GET` y `PUT /api/v1/admin/premios/<id>`, y `POST /api/v1/admin/premios`.
+      Valida: nombre, comercio y descripción obligatorios; costo entero ≥ 0;
+      `fondo` como `#RRGGBB`. Solo `admin`.
+- [ ] `PATCH /api/v1/admin/premios/<id>` con `{activo}`: archivar o prender.
+      Nunca se borra (los cupones apuntan al premio).
+- [ ] **`cupo` en `Premio`** (campo nuevo, entero o null = sin límite): cuántos
+      cupones puede dar el comercio. El canje en la app tiene que respetarlo.
+- [ ] `POST /api/v1/admin/premios/importar` con `{json, aplicar}`: lo mismo que
+      `importar_premios`. Con `aplicar=false` solo responde
+      `{crear, actualizar, errores}`; si un premio viene mal, no guarda nada.
+
+## 8. Cupones y estadísticas de canje (A45)
+
+Forma: `src/datos/cupones.ts`. Sección `cupones`.
+
+- [ ] `GET /api/v1/admin/cupones/<codigo>`: un cupón por código (el panel lo
+      manda como `MV-XXXX-XXXX`). Trae el `fondo` del logo del premio.
+- [ ] `GET /api/v1/admin/cupones?q=&usuario_id=&estado=&origen=&premio_id=`.
+      Un cupón activo cuya fecha ya pasó se devuelve como `expirado`.
+- [ ] `POST /api/v1/admin/cupones/<codigo>/usar`: solo si está activo y sin
+      vencer. Si no, `400 {error: "cupon_usado"}` o `{error: "cupon_vencido"}`.
+      Lo pueden hacer `soporte` y `admin`.
+- [ ] **`usado_por` en `Canje`** (campo nuevo): quién lo marcó como usado.
+- [ ] `GET /api/v1/admin/cupones/estadisticas?periodo=` (`7`, `30`, `season`,
+      `todo`): totales, por origen, por día y por premio. Cada premio trae
+      también `canjeados_total` (todos los tiempos), que es lo que se resta
+      del cupo.
+
+## 9. La Liga (A45)
+
+Forma: `src/datos/liga.ts`. Sección `liga`.
+
+- [ ] **`LigaMensual.nombre`** (campo nuevo, máx. 40, vacío = "La Liga"): el
+      nombre del mes ("Liga Nike"), que la app muestra debajo de "La Liga ·
+      noviembre". Lo tiene que mandar también el endpoint de La Liga de la app.
+- [ ] `GET /api/v1/admin/liga/meses`: los meses con su estado, fechas de cierre
+      y pago, podio (el fijado al cerrar o el de ahora) y su patrocinio.
+- [ ] `PATCH /api/v1/admin/liga/meses/<mes>` con `{nombre}`: solo meses que no
+      se cerraron. Solo `admin`.
+- [ ] `GET /api/v1/admin/liga/meses/<mes>/tabla`: final si cerró, provisional
+      si está en curso (de `DesgloseLigaMensual`).
+- [ ] `GET` y `PUT /api/v1/admin/liga/podio`: `PremioPodioLiga` (1.º, 2.º, 3.º).
+
+## 10. Patrocinios (A45)
+
+Forma: `src/datos/patrocinios.ts`. Sección `patrocinios`.
+
+- [ ] `GET /api/v1/admin/patrocinios/calendario`: las semanas de la season y
+      los meses de La Liga, cada uno con su patrocinio o libre, y los
+      destacados.
+- [ ] `POST /api/v1/admin/patrocinios`: con las mismas validaciones de
+      `Patrocinio.clean()` (el panel ya las copia y las prueba). Solo `admin`.
+- [ ] `PATCH /api/v1/admin/patrocinios/<id>` con `{activo: false}`: apagar.
+- [ ] `GET /api/v1/admin/patrocinios/<id>/reporte`: para el comercio, cuántos
+      ganaron su cupón y cuántos lo usaron (`{ganados, usados, vencidos,
+      activos}`). Hoy `Canje.patrocinio` ya liga el cupón con su patrocinio.

@@ -28,9 +28,10 @@ import { useConsulta } from '@/datos/useConsulta';
 import { cx } from '@/lib/cx';
 import { conSigno, fecha, fechaCorta, fechaHora, haceCuanto, numero } from '@/lib/formato';
 import { AjusteDialog } from './AjusteDialog';
+import { CuponesDeCuenta } from './CuponesDeCuenta';
 import { diasSinSync, EstadoPolizaChip, motivoRechazo, RetroactivoChip, UltimoSync } from './comun';
 
-type Pestana = 'resumen' | 'puntos' | 'monedas' | 'sync';
+type Pestana = 'resumen' | 'puntos' | 'monedas' | 'cupones' | 'sync';
 
 function Dato({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -395,6 +396,7 @@ export function FichaUsuario() {
           { key: 'resumen', label: 'Resumen' },
           { key: 'puntos', label: 'Puntos' },
           { key: 'monedas', label: 'Monedas' },
+          { key: 'cupones', label: 'Cupones' },
           { key: 'sync', label: 'Sync' },
         ]}
       />
@@ -421,6 +423,7 @@ export function FichaUsuario() {
           />
         </>
       )}
+      {pestana === 'cupones' && <CuponesDeCuenta usuario_id={f.usuario.usuario_id} />}
       {pestana === 'sync' && <Sync usuario_id={f.usuario.usuario_id} />}
     </>
   );

@@ -2,9 +2,10 @@
  * Quién está usando el panel y qué puede hacer.
  *
  * Dos roles (los datos de salud son sensibles):
- *   soporte → solo lectura + verificar y rechazar pólizas.
+ *   soporte → solo lectura + verificar y rechazar pólizas + marcar cupones.
  *   admin   → todo lo de soporte + configuración (objetivo semanal, reglas,
- *             correr cierres), ajustes de puntos o monedas y la bitácora.
+ *             correr cierres, premios, La Liga, patrocinios), ajustes de
+ *             puntos o monedas y la bitácora.
  *
  * El rol lo manda el backend al entrar. El panel lo usa para mostrar u
  * ocultar acciones, pero quien decide es el servidor: cada endpoint valida
@@ -25,11 +26,35 @@ export interface SesionPanel {
   rol: Rol;
 }
 
-export type Accion = 'ver' | 'verificar_poliza' | 'ajustar_ledger' | 'editar_objetivo' | 'correr_cierre' | 'editar_reglas' | 'ver_bitacora';
+export type Accion =
+  | 'ver'
+  | 'verificar_poliza'
+  | 'marcar_cupon'
+  | 'ajustar_ledger'
+  | 'editar_objetivo'
+  | 'correr_cierre'
+  | 'editar_reglas'
+  | 'editar_premios'
+  | 'editar_liga'
+  | 'editar_patrocinios'
+  | 'ver_bitacora';
 
 const PERMISOS: Record<Rol, ReadonlySet<Accion>> = {
-  soporte: new Set<Accion>(['ver', 'verificar_poliza']),
-  admin: new Set<Accion>(['ver', 'verificar_poliza', 'ajustar_ledger', 'editar_objetivo', 'correr_cierre', 'editar_reglas', 'ver_bitacora']),
+  // Soporte atiende: verifica pólizas y marca cupones cuando llama un comercio.
+  soporte: new Set<Accion>(['ver', 'verificar_poliza', 'marcar_cupon']),
+  admin: new Set<Accion>([
+    'ver',
+    'verificar_poliza',
+    'marcar_cupon',
+    'ajustar_ledger',
+    'editar_objetivo',
+    'correr_cierre',
+    'editar_reglas',
+    'editar_premios',
+    'editar_liga',
+    'editar_patrocinios',
+    'ver_bitacora',
+  ]),
 };
 
 export const NOMBRE_ROL: Record<Rol, string> = { soporte: 'Soporte', admin: 'Administrador' };
@@ -109,6 +134,16 @@ export async function iniciarSesion(correo: string, contrasena: string): Promise
   }
   guardarSesion({ token: r.token, expiry: r.expiry, ...r.admin });
   return { ...r.admin };
+}
+
+/**
+ * Solo con datos de muestra: ver el panel como el otro rol, para demos.
+ * Con la API no hace nada: el rol lo decide el servidor.
+ */
+export function cambiarRolDeMuestra(rol: Rol): void {
+  const s = leerSesionGuardada();
+  if (conectado('sesion') || !s || s.rol === rol) return;
+  guardarSesion({ ...s, rol });
 }
 
 /** Sale del panel. En la API también borra el token en el servidor (POST /api/v1/logout). */

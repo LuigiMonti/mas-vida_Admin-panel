@@ -1,8 +1,9 @@
 # Panel de administración de +vida
 
-Frontend del panel (React + TypeScript + Vite + Tailwind v4). Alcance actual: lo
-imprescindible para el piloto (usuarios y pólizas, retroactivo denegado, objetivo
-semanal y su cierre, ledger de solo lectura, soporte de sync, reglas y bitácora).
+Frontend del panel (React + TypeScript + Vite + Tailwind v4): usuarios y pólizas,
+retroactivo denegado, ledger y ajustes, soporte de sync, objetivo semanal y su
+cierre, reglas de puntaje, La Liga, premios, cupones, estadísticas de canje,
+patrocinios y bitácora.
 Habla con la API `/api/v1/admin/` del backend Django (`mas-vida_backend`); nunca
 con la base de datos.
 
@@ -28,11 +29,13 @@ Cada sección lee de datos de muestra o de la API según `.env.local`:
 | `VITE_DATOS_API` | Con `mock`, secciones que igual van a la API: `sesion,polizas` |
 
 Secciones: `sesion`, `resumen`, `usuarios`, `polizas`, `retroactivo`, `objetivos`,
-`reglas`, `cierres`, `bitacora`. Así se conecta una pantalla a la vez, a medida
+`reglas`, `cierres`, `bitacora`, `premios`, `cupones`, `liga`, `patrocinios`. Así se conecta una pantalla a la vez, a medida
 que el backend saca cada endpoint. El header avisa cuando hay datos de muestra.
 
 Con datos de muestra se entra con cualquier correo y contraseña; un correo que
-empieza con `soporte` entra como soporte.
+empieza con `soporte` entra como soporte. En el header, "Ver como" cambia de rol
+para demos (solo con datos de muestra). Los premios de muestra son el catálogo
+real de la app, con sus logos en `public/premios/`.
 
 ## Cómo está armado
 
@@ -59,8 +62,8 @@ empieza con `soporte` entra como soporte.
 
 ## Reglas
 
-- Roles: soporte (solo lectura + verificar pólizas) y admin (configuración,
-  ajustes, cierres y bitácora). El panel oculta lo que no toca, pero quien decide
+- Roles: soporte (solo lectura + verificar pólizas + marcar cupones) y admin
+  (configuración, ajustes, cierres, premios, La Liga, patrocinios y bitácora). El panel oculta lo que no toca, pero quien decide
   es el servidor.
 - Nunca se muestran tokens ni el encabezado Authorization.
 - Los ledgers de puntos y monedas no se editan ni se borran: una corrección es una
