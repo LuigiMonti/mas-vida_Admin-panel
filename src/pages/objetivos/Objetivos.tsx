@@ -11,7 +11,6 @@ import { DataTable, type Column } from '@/components/ui/Table';
 import {
   guardarMetasPorEdad,
   guardarObjetivo,
-  heredadoDe,
   listarMetasPorEdad,
   obtenerSeason,
   type EstadoSemana,
@@ -37,7 +36,7 @@ const editable = (s: SemanaDeSeason) => s.estado === 'futura' || s.estado === 's
 /* ----------------------------------------------------------------- editar semana */
 
 function EditarSemana({ s, hayMas, onClose, onGuardado }: { s: SemanaDeSeason | null; hayMas: boolean; onClose: () => void; onGuardado: (m: string) => void }) {
-  const base = s ? (s.objetivo ?? heredadoDe(s.fecha_inicio)) : null;
+  const base = s ? (s.objetivo ?? s.heredado) : null;
   const [v, setV] = useState({ meta_workouts: '', monedas_pasos: '', monedas_workouts: '', meta_pasos: '' });
   const [enAdelante, setEnAdelante] = useState(false);
   const [error, setError] = useState<ErrorPanel>();
@@ -262,14 +261,15 @@ export function Objetivos() {
       key: 'workouts',
       header: 'Workouts',
       numeric: true,
-      render: (s) => (s.objetivo ? <span className="font-semibold">{s.objetivo.meta_workouts}</span> : <span className="text-text-muted">{heredadoDe(s.fecha_inicio).meta_workouts}*</span>),
+      render: (s) => (s.objetivo ? <span className="font-semibold">{s.objetivo.meta_workouts}</span> : <span className="text-text-muted">{s.heredado?.meta_workouts ?? '—'}*</span>),
     },
     {
       key: 'monedas',
       header: 'Monedas (pasos + workouts)',
       numeric: true,
       render: (s) => {
-        const o = s.objetivo ?? heredadoDe(s.fecha_inicio);
+        const o = s.objetivo ?? s.heredado;
+        if (!o) return <span className="text-text-muted">—</span>;
         return (
           <span className={s.objetivo ? 'font-semibold text-coin' : 'text-text-muted'}>
             {o.monedas_pasos} + {o.monedas_workouts}

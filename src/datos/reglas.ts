@@ -21,7 +21,9 @@
  */
 
 export const MAX_VERSIONES_POR_DIA = 3;
+import { pedir } from './api';
 import { registrar } from './bitacora';
+import { conectado } from './modo';
 import { copia, ErrorPanel, hoyGT, simularRed } from './red';
 import { puede } from './sesion';
 
@@ -123,6 +125,7 @@ export interface ListaVersiones {
 }
 
 export function listarVersiones(): Promise<ListaVersiones> {
+  if (conectado('reglas')) return pedir<ListaVersiones>('/api/v1/admin/reglas');
   return simularRed(() => {
     const v = vigente();
     return copia({
@@ -165,6 +168,7 @@ function validarTabla(t: TablaPuntaje): Record<string, string> {
 
 /** Crea una versión con su tabla. Empieza hoy o después; no se edita después. */
 export function crearVersion(vigente_desde: string, tabla: TablaPuntaje): Promise<VersionRegla> {
+  if (conectado('reglas')) return pedir<VersionRegla>('/api/v1/admin/reglas', { cuerpo: { vigente_desde, tabla } });
   return simularRed(() => {
     if (!puede('editar_reglas')) throw new ErrorPanel('Tu rol no puede cambiar las reglas.');
     const campos = validarTabla(tabla);

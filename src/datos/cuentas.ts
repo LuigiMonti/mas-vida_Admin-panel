@@ -10,9 +10,11 @@
  *   del retroactivo en ese momento (services/polizas.py → verificar).
  * - Una póliza verificada no se rechaza.
  */
+import { pedir } from './api';
 import { registrar } from './bitacora';
+import { conectado } from './modo';
 import { copia, ErrorPanel, hoyGT, simularRed } from './red';
-import { puede, sesionActual } from './sesion';
+import { correoActual, puede } from './sesion';
 import type { Nivel } from '@/components/ui/Niveles';
 
 /* ================================================================= tipos */
@@ -163,11 +165,14 @@ function edad(nacimiento: string, en: string): number {
   return Math.max(0, e);
 }
 
+const esBisiesto = (a: number) => (a % 4 === 0 && a % 100 !== 0) || a % 400 === 0;
+
+/** Como _mismo_dia_otro_anio del backend: el 29 de febrero cae en el 28 si el año no es bisiesto. */
 function mismoDiaOtroAnio(f: string, anios: number): string {
   const [y, m, d] = f.split('-');
-  const nuevo = `${Number(y) + anios}-${m}-${d}`;
-  // 29 de febrero en un año no bisiesto → 28.
-  return Number.isNaN(Date.parse(nuevo)) ? `${Number(y) + anios}-${m}-28` : nuevo;
+  const anio = Number(y) + anios;
+  const dia = m === '02' && d === '29' && !esBisiesto(anio) ? '28' : d;
+  return `${String(anio).padStart(4, '0')}-${m}-${dia}`;
 }
 
 export interface Veredicto {
@@ -539,6 +544,7 @@ export { nombreDe };
 /* ================================================================= usuarios */
 
 export function listarUsuarios(filtro: { q?: string; estado?: EstadoPoliza | 'todos' }): Promise<FilaUsuario[]> {
+  if (conectado('usuarios')) return pedir<FilaUsuario[]>('/api/v1/admin/usuarios', { query: { q: filtro.q, estado: filtro.estado === 'todos' ? undefined : filtro.estado } });
   return simularRed(() => {
     const q = (filtro.q ?? '').trim().toLowerCase();
     return registros
@@ -553,6 +559,7 @@ export function listarUsuarios(filtro: { q?: string; estado?: EstadoPoliza | 'to
 }
 
 export function contarPorEstado(): Promise<Record<EstadoPoliza | 'todos', number>> {
+  if (conectado('usuarios')) return pedir('/api/v1/admin/usuarios/conteo');
   return simularRed(() => {
     const c = { todos: registros.length, sin_poliza: 0, pendiente: 0, verificada: 0, rechazada: 0 };
     for (const r of registros) c[estadoDe(r.usuario)]++;
@@ -561,6 +568,7 @@ export function contarPorEstado(): Promise<Record<EstadoPoliza | 'todos', number
 }
 
 export function obtenerFicha(usuario_id: string): Promise<FichaUsuario> {
+  if (conectado('usuarios')) return pedir<FichaUsuario>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}`);
   return simularRed(() => {
     const r = buscar(usuario_id);
     const p = puntosAnio(r);
@@ -570,15 +578,18 @@ export function obtenerFicha(usuario_id: string): Promise<FichaUsuario> {
 
 /** Ledger de puntos, más nuevo primero. Solo lectura. */
 export function listarLedgerPuntos(usuario_id: string): Promise<FilaLedger[]> {
+  if (conectado('usuarios')) return pedir<FilaLedger[]>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}/puntos`);
   return simularRed(() => copia([...buscar(usuario_id).puntos].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)));
 }
 
 /** Ledger de monedas, más nuevo primero. Solo lectura. */
 export function listarLedgerMonedas(usuario_id: string): Promise<FilaMonedas[]> {
+  if (conectado('usuarios')) return pedir<FilaMonedas[]>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}/monedas`);
   return simularRed(() => copia([...buscar(usuario_id).monedas].sort((a, b) => b.fecha.localeCompare(a.fecha) || b.id - a.id)));
 }
 
 export function obtenerSync(usuario_id: string): Promise<SoporteSync> {
+  if (conectado('usuarios')) return pedir<SoporteSync>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}/sync`);
   return simularRed(() => copia(buscar(usuario_id).sync));
 }
 
@@ -595,6 +606,7 @@ export interface NuevoAjuste {
  * una fila de signo contrario.
  */
 export function agregarAjuste(usuario_id: string, a: NuevoAjuste): Promise<void> {
+  if (conectado('usuarios')) return pedir<void>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}/ajustes`, { cuerpo: a });
   return simularRed(() => {
     if (!puede('ajustar_ledger')) throw new ErrorPanel('Tu rol no puede hacer ajustes.');
     const r = buscar(usuario_id);
@@ -615,10 +627,10 @@ export function agregarAjuste(usuario_id: string, a: NuevoAjuste): Promise<void>
     const ahora = new Date().toISOString();
     const motivo = a.motivo.trim();
     if (a.ledger === 'puntos') {
-      r.puntos.push({ id: siguienteFila++, fecha: a.fecha, tipo: 'ajuste_manual', puntos: a.cantidad, puntos_pasos: null, puntos_intensidad: null, tope_diario_aplicado: null, version_regla: VERSION_ACTIVA, creado_en: ahora, motivo, autor: sesionActual.correo });
+      r.puntos.push({ id: siguienteFila++, fecha: a.fecha, tipo: 'ajuste_manual', puntos: a.cantidad, puntos_pasos: null, puntos_intensidad: null, tope_diario_aplicado: null, version_regla: VERSION_ACTIVA, creado_en: ahora, motivo, autor: correoActual() });
       registrar('ajuste_puntos', usuario_id, `${a.cantidad > 0 ? '+' : ''}${a.cantidad} pts el ${a.fecha} · ${motivo}`);
     } else {
-      r.monedas.push({ id: siguienteFila++, fecha: a.fecha, tipo: 'ajuste_manual', cantidad: a.cantidad, fecha_expiracion: a.cantidad > 0 ? '2027-01-03' : null, creado_en: ahora, motivo, autor: sesionActual.correo });
+      r.monedas.push({ id: siguienteFila++, fecha: a.fecha, tipo: 'ajuste_manual', cantidad: a.cantidad, fecha_expiracion: a.cantidad > 0 ? '2027-01-03' : null, creado_en: ahora, motivo, autor: correoActual() });
       registrar('ajuste_monedas', usuario_id, `${a.cantidad > 0 ? '+' : ''}${a.cantidad} monedas · ${motivo}`);
     }
   });
@@ -650,6 +662,7 @@ function otraCuentaCon(r: Registro): string | null {
 }
 
 export function listarPolizas(filtro: { estado?: Exclude<EstadoPoliza, 'sin_poliza'> | 'todas'; q?: string }): Promise<FilaPoliza[]> {
+  if (conectado('polizas')) return pedir<FilaPoliza[]>('/api/v1/admin/polizas', { query: { estado: filtro.estado === 'todas' ? undefined : filtro.estado, q: filtro.q } });
   return simularRed(() => {
     const q = (filtro.q ?? '').trim().toLowerCase();
     return copia(
@@ -673,6 +686,7 @@ export interface ResultadoVerificacion {
 
 /** policies → verificar. Guarda la fecha confirmada y toma el veredicto ahora. */
 export function verificarPoliza(usuario_id: string, birth_date_confirmada: string): Promise<ResultadoVerificacion> {
+  if (conectado('polizas')) return pedir<ResultadoVerificacion>(`/api/v1/admin/polizas/${encodeURIComponent(usuario_id)}/verificar`, { cuerpo: { birth_date_confirmada } });
   return simularRed(() => {
     if (!puede('verificar_poliza')) throw new ErrorPanel('Tu rol no puede verificar pólizas.');
     const r = buscar(usuario_id);
@@ -707,6 +721,7 @@ export function verificarPoliza(usuario_id: string, birth_date_confirmada: strin
 
 /** policies → rechazar. Rechazada cuenta igual que sin póliza; no toca el ledger. */
 export function rechazarPoliza(usuario_id: string, motivo: string): Promise<void> {
+  if (conectado('polizas')) return pedir<void>(`/api/v1/admin/polizas/${encodeURIComponent(usuario_id)}/rechazar`, { cuerpo: { motivo } });
   return simularRed(() => {
     if (!puede('verificar_poliza')) throw new ErrorPanel('Tu rol no puede rechazar pólizas.');
     const r = buscar(usuario_id);
@@ -739,6 +754,7 @@ export interface CasoRetroactivo {
 
 /** Cuentas con el retroactivo denegado y lo que se anuló. Solo lectura. */
 export function listarRetroactivoDenegado(): Promise<CasoRetroactivo[]> {
+  if (conectado('retroactivo')) return pedir<CasoRetroactivo[]>('/api/v1/admin/retroactivo');
   return simularRed(() =>
     registros
       .filter((r) => r.usuario.poliza?.retroactivo === 'denegado')

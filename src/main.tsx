@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router';
 import '@/styles/index.css';
 import { AppShell } from '@/components/layout/AppShell';
 import { PorConstruir } from '@/components/layout/PorConstruir';
+import { RequiereSesion } from '@/components/layout/RequiereSesion';
 import { Inicio } from '@/pages/Inicio';
 import { Login } from '@/pages/Login';
 // Cada sección define sus rutas en su carpeta: así cada branch toca solo lo suyo.
@@ -19,7 +20,11 @@ const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
   {
     path: '/',
-    element: <AppShell />,
+    element: (
+      <RequiereSesion>
+        <AppShell />
+      </RequiereSesion>
+    ),
     children: [
       { index: true, element: <Inicio /> },
       ...rutasUsuarios,

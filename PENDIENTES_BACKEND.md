@@ -6,16 +6,28 @@ una pantalla del panel pide algo que el backend todavía no tiene.
 
 **Cómo funciona:** el panel nunca toca la base de datos. Todo va
 panel → API de Django (`/api/v1/admin/…`) → Django valida y guarda → base de
-datos. Hoy el panel usa mocks en `src/datos/` con la forma de las respuestas
-que espera; cada función del mock dice qué endpoint la reemplaza.
+datos.
+
+**El panel ya está listo para conectarse** (A49). Cada función de
+`src/datos/` ya llama a su endpoint cuando la sección está conectada en
+`.env.local` (`VITE_DATOS_API=sesion,polizas…`). La forma que espera cada
+respuesta es el tipo TypeScript de esa función. Para conectar una sección,
+basta con que el endpoint exista con esa forma.
+
+**Errores que el panel ya entiende:** los de DRF (`{campo: ["…"]}`,
+`non_field_errors`, `detail`) y los propios (`{error, mensaje}`, el 429 con
+`reintentar_en`). Un 401 lo manda al login.
 
 ---
 
 ## 0. Base de la API del panel
 
-- [ ] **Login del panel**: `POST /api/v1/admin/login`. Solo cuentas `is_staff`,
-      con el límite de intentos que ya tiene el login del admin de Django.
-      Token de knox, igual que la app.
+- [ ] **Login del panel**: `POST /api/v1/admin/login` con
+      `{username, password}` → `200 {token, expiry, admin: {correo, nombre, rol}}`,
+      donde `rol` es `"soporte"` o `"admin"`. Solo cuentas `is_staff`
+      (otra cuenta: `400 non_field_errors`), con el mismo límite de intentos
+      que `/api/v1/login` (429). Token de knox, igual que la app. Para salir,
+      el panel usa el `POST /api/v1/logout` que ya existe.
 - [ ] **Roles**: `soporte` (solo lectura + verificar y rechazar pólizas) y
       `admin` (todo, incluida configuración y ajustes). Puede ser con grupos
       de Django. El panel ya los aplica en `src/datos/sesion.ts`; el backend
@@ -24,7 +36,8 @@ que espera; cada función del mock dice qué endpoint la reemplaza.
       acción, a quién afectó y detalle. La escribe el backend en cada
       endpoint que cambia algo. Nunca guarda tokens, el encabezado
       `Authorization` ni datos de salud. Forma: `src/datos/bitacora.ts`.
-- [ ] **CORS** para el dominio del panel.
+- [ ] **CORS** para el dominio del panel en producción. En local ya funciona:
+      `CORS_ALLOWED_ORIGIN_REGEXES` acepta `localhost` en cualquier puerto.
 
 ## 1. Inicio
 
@@ -40,6 +53,9 @@ que espera; cada función del mock dice qué endpoint la reemplaza.
 
 - [ ] `GET /api/v1/admin/usuarios?q=&estado=`: búsqueda por correo,
       `usuario_id` o número de póliza; filtro por estado de póliza.
+- [ ] `GET /api/v1/admin/usuarios/conteo`: cuántas cuentas hay en cada estado
+      de póliza (`{todos, sin_poliza, pendiente, verificada, rechazada}`), para
+      los filtros.
 - [ ] `GET /api/v1/admin/usuarios/<usuario_id>`: ficha con póliza, puntos del
       año de póliza, nivel y saldo de monedas.
 - [ ] `GET …/usuarios/<usuario_id>/puntos` y `…/monedas`: los ledgers, solo
@@ -95,11 +111,14 @@ pierden.
 
 - [ ] `GET /api/v1/admin/objetivos/season`: las semanas de la season con su
       estado (cerrada, sin cerrar, en revisión, en curso, definida, sin
-      definir) y el resultado de las cerradas.
+      definir) y el resultado de las cerradas. Las sin definir traen
+      `heredado`: los valores que tendrían si se crean solas (copia de la
+      anterior, como `objetivo_de_la_semana`).
 - [ ] `PUT …/objetivos/<fecha_inicio>`: crea o edita `ObjetivoSemanal`
       (`meta_workouts`, `monedas_pasos`, `monedas_workouts`, `meta_pasos`).
       **Solo semanas que todavía no empiezan.** Con `en_adelante=true`, aplica
-      lo mismo a las semanas siguientes ya creadas.
+      lo mismo a las semanas siguientes ya creadas. Responde
+      `{semanas_actualizadas}`.
 - [ ] `GET` y `PUT …/objetivos/metas-por-edad`: la tabla `MetaPasosPorEdad`
       entera, con validaciones (desde 18 años, sin edades repetidas, al
       menos una fila).

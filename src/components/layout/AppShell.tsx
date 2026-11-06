@@ -6,6 +6,7 @@ import {
   FileCheck2,
   History,
   House,
+  LogOut,
   Menu,
   RotateCcw,
   SlidersHorizontal,
@@ -16,7 +17,8 @@ import {
 import { cx } from '@/lib/cx';
 import { Avatar } from '@/components/ui/Progress';
 import { SearchInput } from '@/components/ui/Field';
-import { NOMBRE_ROL, puede, sesionActual, type Accion } from '@/datos/sesion';
+import { resumenModo } from '@/datos/modo';
+import { cerrarSesion, NOMBRE_ROL, puede, useSesion, type Accion } from '@/datos/sesion';
 
 interface NavItem {
   to: string;
@@ -55,6 +57,8 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
 ];
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+  // Vuelve a dibujar el menú si cambia el rol.
+  useSesion();
   return (
     <nav aria-label="Secciones" className="flex h-full flex-col gap-6 overflow-y-auto bg-primary-deep px-4 py-6 text-white">
       <div className="flex items-center justify-between px-2">
@@ -96,6 +100,8 @@ interface HeaderProps {
 
 function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
   const ir = useNavigate();
+  const sesion = useSesion();
+  const modo = resumenModo();
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-surface">
       <div className="flex h-16 items-center gap-4 px-6">
@@ -121,11 +127,35 @@ function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
           <SearchInput name="q" placeholder="Buscar usuario, usuario_id o póliza" aria-label="Buscar" />
         </form>
         <div className="ml-auto flex items-center gap-3">
-          <div className="hidden text-right sm:block">
-            <div className="text-[13px] font-semibold">{sesionActual.nombre}</div>
-            <div className="text-[12px] text-text-muted">{NOMBRE_ROL[sesionActual.rol]}</div>
-          </div>
-          <Avatar name={sesionActual.nombre} seed={sesionActual.correo} />
+          {modo !== 'api' && (
+            <span
+              className="hidden rounded-full bg-warning-tint px-2.5 py-0.5 text-[12px] font-semibold text-warning md:inline"
+              title="Configurado en .env con VITE_DATOS y VITE_DATOS_API"
+            >
+              {modo === 'mock' ? 'Datos de muestra' : 'Parte con datos de muestra'}
+            </span>
+          )}
+          {sesion && (
+            <>
+              <div className="hidden text-right sm:block">
+                <div className="text-[13px] font-semibold">{sesion.nombre}</div>
+                <div className="text-[12px] text-text-muted">{NOMBRE_ROL[sesion.rol]}</div>
+              </div>
+              <Avatar name={sesion.nombre} seed={sesion.correo} />
+              <button
+                type="button"
+                onClick={async () => {
+                  await cerrarSesion();
+                  ir('/login', { replace: true });
+                }}
+                className="grid size-9 shrink-0 place-items-center rounded-full text-text-muted transition-colors hover:bg-surface-muted hover:text-primary"
+                aria-label="Cerrar sesión"
+                title="Cerrar sesión"
+              >
+                <LogOut size={18} />
+              </button>
+            </>
+          )}
         </div>
       </div>
       {tabs && <div className="flex gap-6 overflow-x-auto px-6">{tabs}</div>}

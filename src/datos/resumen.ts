@@ -1,5 +1,7 @@
 import { ultimaCorrida } from './cierres';
 import { contarSemanasPendientes } from './objetivos';
+import { pedir } from './api';
+import { conectado } from './modo';
 import { simularRed } from './red';
 
 /**
@@ -29,6 +31,7 @@ export interface ResumenPanel {
 }
 
 export function obtenerResumen(): Promise<ResumenPanel> {
+  if (conectado('resumen')) return pedir<ResumenPanel>('/api/v1/admin/resumen');
   return simularRed(() => {
     // El estado del cierre sale del mismo mock que la pantalla de cierres.
     const ultima = ultimaCorrida();

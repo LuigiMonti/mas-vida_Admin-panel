@@ -11,7 +11,9 @@
  * - Cada componente paga sus monedas por separado.
  * - Una semana que ya empezó no se edita: cambiaría la meta a mitad de camino.
  */
+import { pedir } from './api';
 import { registrar } from './bitacora';
+import { conectado } from './modo';
 import { copia, ErrorPanel, hoyGT, simularRed } from './red';
 import { puede } from './sesion';
 
@@ -35,6 +37,8 @@ export interface SemanaDeSeason {
   estado: EstadoSemana;
   /** null si la semana todavía no existe (se va a crear copiando la anterior). */
   objetivo: ObjetivoSemanal | null;
+  /** Lo que tendría si se crea sola (copia de la anterior). Solo en las sin definir. */
+  heredado: ObjetivoSemanal | null;
   /** Solo en las cerradas. */
   resultado: { evaluados: number; cumplieron_pasos: number; cumplieron_workouts: number; completaron: number } | null;
 }
@@ -134,13 +138,11 @@ function heredado(lunes: string): ObjetivoSemanal {
   };
 }
 
-export function heredadoDe(lunes: string): ObjetivoSemanal {
-  return heredado(lunes);
-}
 
 /* ================================================================= API */
 
 export function obtenerSeason(): Promise<SeasonActual> {
+  if (conectado('objetivos')) return pedir<SeasonActual>('/api/v1/admin/objetivos/season');
   return simularRed(() => {
     const semanas: SemanaDeSeason[] = [];
     for (let i = 0; ; i++) {
@@ -154,6 +156,7 @@ export function obtenerSeason(): Promise<SeasonActual> {
         fecha_fin: sumar(lunes, 6),
         estado: estadoDe(lunes, o),
         objetivo: o ? copia(o) : null,
+        heredado: o ? null : heredado(lunes),
         resultado: resultados.get(lunes) ?? null,
       });
     }
@@ -184,6 +187,10 @@ function validar(c: CambiosObjetivo): Record<string, string> {
  * lo mismo a las semanas siguientes ya creadas (las sin crear lo heredan solas).
  */
 export function guardarObjetivo(fecha_inicio: string, c: CambiosObjetivo, en_adelante: boolean): Promise<number> {
+  if (conectado('objetivos'))
+    return pedir<{ semanas_actualizadas: number }>(`/api/v1/admin/objetivos/${fecha_inicio}`, { metodo: 'PUT', cuerpo: { ...c, en_adelante } }).then(
+      (r) => r.semanas_actualizadas,
+    );
   return simularRed(() => {
     if (!puede('editar_objetivo')) throw new ErrorPanel('Tu rol no puede editar el objetivo semanal.');
     if (fecha_inicio <= HOY) throw new ErrorPanel('No se puede editar: la semana ya empezó.');
@@ -205,11 +212,13 @@ export function guardarObjetivo(fecha_inicio: string, c: CambiosObjetivo, en_ade
 }
 
 export function listarMetasPorEdad(): Promise<MetaPasosPorEdad[]> {
+  if (conectado('objetivos')) return pedir<MetaPasosPorEdad[]>('/api/v1/admin/objetivos/metas-por-edad');
   return simularRed(() => copia(metasPorEdad), 200);
 }
 
 /** Reemplaza la tabla entera (es chica y se edita junta). */
 export function guardarMetasPorEdad(filas: MetaPasosPorEdad[]): Promise<void> {
+  if (conectado('objetivos')) return pedir<void>('/api/v1/admin/objetivos/metas-por-edad', { metodo: 'PUT', cuerpo: filas });
   return simularRed(() => {
     if (!puede('editar_objetivo')) throw new ErrorPanel('Tu rol no puede editar las metas.');
     const campos: Record<string, string> = {};

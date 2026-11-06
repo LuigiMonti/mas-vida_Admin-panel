@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, CalendarClock, CalendarX, History, Loader2, Play, TimerReset } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, MetricCard } from '@/components/ui/Card';
@@ -89,6 +89,17 @@ export function Cierres() {
   const [corriendo, setCorriendo] = useState(false);
   const [resultado, setResultado] = useState<{ tono: 'success' | 'danger'; texto: string }>();
   const admin = puede('correr_cierre');
+  const enCurso = !!prog.datos?.hay_cierre_en_curso;
+
+  // Mientras haya un cierre corriendo, se consulta cada 3 s hasta que termine.
+  useEffect(() => {
+    if (!enCurso) return;
+    const t = setTimeout(() => {
+      prog.recargar();
+      season.recargar();
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [enCurso, prog.datos, prog.recargar, season.recargar]);
 
   const correr = async () => {
     setConfirmar(false);

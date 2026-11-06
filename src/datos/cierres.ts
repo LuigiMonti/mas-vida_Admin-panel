@@ -12,10 +12,12 @@
  *
  * Hoy el backend NO guarda las corridas (solo el log): ver PENDIENTES_BACKEND.md §6.
  */
+import { pedir } from './api';
 import { registrar } from './bitacora';
+import { conectado } from './modo';
 import { cerrarSemanasPendientes } from './objetivos';
 import { copia, ErrorPanel, hoyGT, simularRed } from './red';
-import { puede, sesionActual } from './sesion';
+import { correoActual, puede } from './sesion';
 
 export type TipoCorrida = 'cierre' | 'correccion' | 'liga' | 'pago_liga';
 export type EstadoCorrida = 'ok' | 'fallo' | 'en_curso';
@@ -176,6 +178,7 @@ function proximas(): EstadoProgramador['proximas'] {
 /* ================================================================= API */
 
 export function obtenerEstadoProgramador(): Promise<EstadoProgramador> {
+  if (conectado('cierres')) return pedir<EstadoProgramador>('/api/v1/admin/cierres');
   return simularRed(() =>
     copia({
       ultimo_latido: new Date(Date.now() - 40_000).toISOString(),
@@ -197,6 +200,7 @@ export function ultimaCorrida(): Corrida | null {
  * atrasados) y no se cerraron. Retoma a quienes faltaban, sin pagar dos veces.
  */
 export function correrPonerseAlDia(): Promise<Corrida> {
+  if (conectado('cierres')) return pedir<Corrida>('/api/v1/admin/cierres/semana', { metodo: 'POST' });
   if (!puede('correr_cierre')) return Promise.reject(new ErrorPanel('Tu rol no puede correr cierres.'));
   if (enCurso) return Promise.reject(new ErrorPanel('Hay otro cierre en curso. Espera a que termine.'));
   const ahora = new Date().toISOString();
@@ -210,7 +214,7 @@ export function correrPonerseAlDia(): Promise<Corrida> {
     intentos: 1,
     error: null,
     resumen: 'Poniéndose al día…',
-    origen: sesionActual.correo,
+    origen: correoActual(),
   };
   // Un cierre de verdad tarda: el mock tarda 2,5 s para que se vea el candado.
   return simularRed(() => {

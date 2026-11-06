@@ -1,5 +1,7 @@
+import { pedir } from './api';
+import { conectado } from './modo';
 import { copia, simularRed } from './red';
-import { sesionActual } from './sesion';
+import { correoActual } from './sesion';
 
 /**
  * Bitácora de acciones del admin: quién hizo qué y cuándo.
@@ -46,12 +48,12 @@ const entradas: EntradaBitacora[] = [
 
 let siguienteId = entradas.length + 1;
 
-/** Lo llaman las acciones del mock; en el backend lo hace el servidor. */
+/** Solo para el mock: con la API, cada endpoint escribe su propia entrada. */
 export function registrar(accion: TipoAccion, objetivo: string, detalle: string): void {
   entradas.unshift({
     id: siguienteId++,
     creado_en: new Date().toISOString(),
-    autor: sesionActual.correo,
+    autor: correoActual(),
     accion,
     objetivo,
     detalle,
@@ -59,5 +61,6 @@ export function registrar(accion: TipoAccion, objetivo: string, detalle: string)
 }
 
 export function listarBitacora(filtro?: { objetivo?: string }): Promise<EntradaBitacora[]> {
+  if (conectado('bitacora')) return pedir<EntradaBitacora[]>('/api/v1/admin/bitacora', { query: { objetivo: filtro?.objetivo } });
   return simularRed(() => copia(filtro?.objetivo ? entradas.filter((e) => e.objetivo === filtro.objetivo) : entradas));
 }
