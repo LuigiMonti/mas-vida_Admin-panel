@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Activity, CalendarClock, CalendarX, History, Loader2, Play, TimerReset } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, MetricCard } from '@/components/ui/Card';
@@ -89,6 +89,17 @@ export function Cierres() {
   const [corriendo, setCorriendo] = useState(false);
   const [resultado, setResultado] = useState<{ tono: 'success' | 'danger'; texto: string }>();
   const admin = puede('correr_cierre');
+  const enCurso = !!prog.datos?.hay_cierre_en_curso;
+
+  // Mientras haya un cierre corriendo, se consulta cada 3 s hasta que termine.
+  useEffect(() => {
+    if (!enCurso) return;
+    const t = setTimeout(() => {
+      prog.recargar();
+      season.recargar();
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [enCurso, prog.datos, prog.recargar, season.recargar]);
 
   const correr = async () => {
     setConfirmar(false);
@@ -204,7 +215,10 @@ export function Cierres() {
                     <li key={x.tipo} className="flex items-center justify-between gap-3 rounded-inner bg-surface-muted px-4 py-2.5">
                       <div>
                         <div className="text-[13.5px] font-semibold">{NOMBRE_CORRIDA[x.tipo]}</div>
-                        <div className="text-[12px] text-text-muted">{CUANDO_CORRE[x.tipo]}</div>
+                        <div className="text-[12px] text-text-muted">
+                          {CUANDO_CORRE[x.tipo]}
+                          {x.detalle ? ` · ${x.detalle}` : ''}
+                        </div>
                       </div>
                       <span className="text-[13px] whitespace-nowrap">{fechaHora(x.cuando)}</span>
                     </li>

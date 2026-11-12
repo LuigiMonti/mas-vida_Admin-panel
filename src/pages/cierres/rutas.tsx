@@ -1,4 +1,6 @@
 import type { RouteObject } from 'react-router';
-import { Cierres } from './Cierres';
 
-export const rutasCierres: RouteObject[] = [{ path: 'cierres', element: <Cierres /> }];
+// Cada pantalla se carga cuando se abre, no con el resto del panel.
+export const rutasCierres: RouteObject[] = [
+  { path: 'cierres', lazy: async () => ({ Component: (await import('./Cierres')).Cierres }) },
+];

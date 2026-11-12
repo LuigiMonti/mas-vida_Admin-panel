@@ -1,4 +1,6 @@
 import type { RouteObject } from 'react-router';
-import { Bitacora } from './Bitacora';
 
-export const rutasBitacora: RouteObject[] = [{ path: 'bitacora', element: <Bitacora /> }];
+// Cada pantalla se carga cuando se abre, no con el resto del panel.
+export const rutasBitacora: RouteObject[] = [
+  { path: 'bitacora', lazy: async () => ({ Component: (await import('./Bitacora')).Bitacora }) },
+];

@@ -1,8 +1,7 @@
 import type { RouteObject } from 'react-router';
-import { FichaUsuario } from './FichaUsuario';
-import { ListaUsuarios } from './ListaUsuarios';
 
+// Cada pantalla se carga cuando se abre, no con el resto del panel.
 export const rutasUsuarios: RouteObject[] = [
-  { path: 'usuarios', element: <ListaUsuarios /> },
-  { path: 'usuarios/:usuarioId', element: <FichaUsuario /> },
+  { path: 'usuarios', lazy: async () => ({ Component: (await import('./ListaUsuarios')).ListaUsuarios }) },
+  { path: 'usuarios/:usuarioId', lazy: async () => ({ Component: (await import('./FichaUsuario')).FichaUsuario }) },
 ];

@@ -1,17 +1,24 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { ChevronDown, ShieldCheck } from 'lucide-react';
+import { ChevronDown, RotateCw, ShieldCheck } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Chip } from '@/components/ui/Chip';
+import { MotivoDialog } from '@/components/ui/MotivoDialog';
 import { PageTitle } from '@/components/ui/PageTitle';
 import { Avatar } from '@/components/ui/Progress';
-import { EmptyState, ErrorState } from '@/components/ui/States';
-import { listarRetroactivoDenegado, type CasoRetroactivo } from '@/datos/cuentas';
+import { Alert, EmptyState, ErrorState } from '@/components/ui/States';
+import { listarRetroactivoDenegado, restituirRetroactivo, veredictoPrevio, type CasoRetroactivo } from '@/datos/cuentas';
+import { puede } from '@/datos/sesion';
 import { useConsulta } from '@/datos/useConsulta';
 import { cx } from '@/lib/cx';
-import { fecha, fechaCorta, numero } from '@/lib/formato';
+import { fecha, fechaCorta, fechaHora, numero } from '@/lib/formato';
 
-function Caso({ c }: { c: CasoRetroactivo }) {
+function Caso({ c, onRestituido }: { c: CasoRetroactivo; onRestituido: (aviso: string) => void }) {
   const [abierto, setAbierto] = useState(false);
+  const [restituir, setRestituir] = useState(false);
+  // Por qué se denegó, con las edades del día de la verificación.
+  const porque = c.corte && c.birth_date_confirmada ? veredictoPrevio(c.birth_date, c.birth_date_confirmada, c.corte).explicacion : '';
   return (
     <Card className="p-0">
       <button
@@ -22,7 +29,10 @@ function Caso({ c }: { c: CasoRetroactivo }) {
       >
         <Avatar name={c.nombre} seed={c.usuario_id} />
         <div className="min-w-0">
-          <div className="truncate font-semibold">{c.nombre}</div>
+          <div className="flex items-center gap-2">
+            <span className="truncate font-semibold">{c.nombre}</span>
+            {c.restituido_en && <Chip tone="success">Restituido</Chip>}
+          </div>
           <div className="font-mono text-[11.5px] text-text-muted">
             {c.usuario_id} · {c.policy_number}
           </div>
@@ -59,29 +69,63 @@ function Caso({ c }: { c: CasoRetroactivo }) {
               Ver ledger →
             </Link>
           </div>
+          {porque && <p className="mb-3 text-[13px] text-text-muted">Por qué se denegó: {porque}</p>}
           <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
             {c.dias.map((d) => (
-              <li key={d.fecha} className="flex items-center justify-between rounded-inner bg-danger-tint px-3 py-2 text-[12.5px]">
+              <li key={d.fecha} className={cx('flex items-center justify-between rounded-inner px-3 py-2 text-[12.5px]', c.restituido_en ? 'bg-surface-muted' : 'bg-danger-tint')}>
                 <span className="text-text-muted">{fechaCorta(d.fecha)}</span>
-                <span className="font-bold text-danger tabular-nums">−{d.puntos}</span>
+                <span className={cx('font-bold tabular-nums', c.restituido_en ? 'text-text-muted line-through' : 'text-danger')}>−{d.puntos}</span>
               </li>
             ))}
           </ol>
+          <div className="mt-4">
+            {c.restituido_en ? (
+              <Alert tone="success">Restituido el {fechaHora(c.restituido_en)}: se devolvieron los puntos de cada día y las monedas, con filas nuevas en los ledgers.</Alert>
+            ) : puede('administrar_cuenta') ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-inner bg-surface-muted px-4 py-3">
+                <span className="text-[13px] text-text-muted">Si al revisarlo fue un error (de la persona o de la aseguradora) y no una mentira, se le devuelve lo anulado.</span>
+                <Button size="sm" variant="secondary" icon={RotateCw} onClick={() => setRestituir(true)}>
+                  Restituir lo anulado
+                </Button>
+              </div>
+            ) : (
+              <Alert tone="info">Solo un admin puede restituir lo anulado.</Alert>
+            )}
+          </div>
         </div>
       )}
+      <MotivoDialog
+        open={restituir}
+        title="Restituir lo anulado"
+        description={`A ${c.nombre} se le devuelven ${numero(c.puntos_anulados)} puntos (${c.dias.length} días) y ${numero(c.monedas_anuladas)} monedas, con filas nuevas de ajuste. Lo anulado no se borra del ledger.`}
+        confirmLabel="Restituir"
+        sugerencias={['Error de la aseguradora en la fecha', 'Se equivocó al escribir su fecha', 'La fecha no le daba ventaja real']}
+        onClose={() => setRestituir(false)}
+        onConfirm={async (motivo) => {
+          const r = await restituirRetroactivo(c.usuario_id, motivo);
+          onRestituido(`Restituido a ${c.nombre}: ${numero(r.puntos)} puntos de ${r.dias} días y ${numero(r.monedas)} monedas.`);
+        }}
+      />
     </Card>
   );
 }
 
 export function Retroactivo() {
-  const casos = useConsulta(listarRetroactivoDenegado);
+  const [vuelta, setVuelta] = useState(0);
+  const [aviso, setAviso] = useState<string>();
+  const casos = useConsulta(listarRetroactivoDenegado, [vuelta]);
   return (
     <>
       <PageTitle
         title="Retroactivo"
         accent="denegado"
-        description="Cuentas en las que la fecha de nacimiento no coincidió con la aseguradora y se anuló lo ganado antes de verificar. Solo lectura."
+        description="Cuentas en las que la fecha de nacimiento no coincidió con la aseguradora y se anuló lo ganado antes de verificar. Si fue un error y no una mentira, un admin puede restituirlo."
       />
+      {aviso && (
+        <Alert tone="success" className="mb-5">
+          {aviso}
+        </Alert>
+      )}
       {casos.estado === 'error' ? (
         <Card>
           <ErrorState description={casos.error} onRetry={casos.recargar} />
@@ -95,7 +139,14 @@ export function Retroactivo() {
       ) : (
         <div className="flex flex-col gap-3">
           {casos.datos.map((c) => (
-            <Caso key={c.usuario_id} c={c} />
+            <Caso
+              key={c.usuario_id}
+              c={c}
+              onRestituido={(m) => {
+                setAviso(m);
+                setVuelta((v) => v + 1);
+              }}
+            />
           ))}
         </div>
       )}
