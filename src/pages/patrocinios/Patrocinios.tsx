@@ -16,7 +16,6 @@ import {
   obtenerCalendario,
   reportePatrocinio,
   sumarDias,
-  ultimoDelMes,
   type Calendario,
   type DatosPatrocinio,
   type Patrocinio,
@@ -25,15 +24,13 @@ import {
 import { listarPremios } from '@/datos/premios';
 import { ErrorPanel, hoyGT } from '@/datos/red';
 import { puede } from '@/datos/sesion';
+import { nombreCiclo } from '@/datos/temporadas';
 import { useConsulta } from '@/datos/useConsulta';
 import { cx } from '@/lib/cx';
 import { fecha, fechaCorta, porcentaje } from '@/lib/formato';
 
-const fmtMes = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-const nombreMes = (m: string) => {
-  const t = fmtMes.format(new Date(`${m}T12:00:00Z`)).replace(' de ', ' ');
-  return t.charAt(0).toUpperCase() + t.slice(1);
-};
+/** "1 nov – 3 ene". */
+const rango = (desde: string, hasta: string) => `${fechaCorta(desde).split(' ').slice(1).join(' ')} – ${fechaCorta(hasta).split(' ').slice(1).join(' ')}`;
 
 /* ----------------------------------------------------------------- vender */
 
@@ -54,7 +51,7 @@ function Vender({ inicial, cal, onClose, onCreado }: { inicial: Partial<DatosPat
   const e = error?.campos ?? {};
   const set = (c: Partial<DatosPatrocinio>) => setD((x) => ({ ...x, ...c }));
   const semanasLibres = cal.semanas.filter((s) => !s.patrocinio && !s.ya_paso);
-  const mesesLibres = cal.meses.filter((m) => !m.patrocinio && !m.ya_paso);
+  const ligasLibres = cal.ligas.filter((m) => !m.patrocinio && !m.ya_paso);
   const conLogo = (premios.datos ?? []).filter((p) => p.foto);
 
   const guardar = async () => {
@@ -127,13 +124,19 @@ function Vender({ inicial, cal, onClose, onCreado }: { inicial: Partial<DatosPat
           </SelectField>
         )}
         {d.tipo === 'liga' && (
-          <SelectField label="Mes de La Liga" value={d.desde} onChange={(x) => set({ desde: x.target.value, hasta: x.target.value ? ultimoDelMes(x.target.value) : '' })} error={e.desde}>
+          <SelectField
+            label="Temporada de La Liga"
+            value={d.desde}
+            onChange={(x) => set({ desde: x.target.value, hasta: cal.ligas.find((m) => m.inicio === x.target.value)?.fin ?? '' })}
+            error={e.desde}
+            hint="El patrocinio va de punta a punta de la temporada. Solo las libres que todavía no terminan."
+          >
             <option value="" disabled>
-              Elige el mes
+              Elige la temporada
             </option>
-            {mesesLibres.map((m) => (
-              <option key={m.mes} value={m.mes}>
-                {nombreMes(m.mes)}
+            {ligasLibres.map((m) => (
+              <option key={m.inicio} value={m.inicio}>
+                {nombreCiclo(m)} · {rango(m.inicio, m.fin)}
               </option>
             ))}
           </SelectField>
@@ -211,7 +214,7 @@ function Detalle({ p, onClose, onApagado }: { p: Patrocinio | null; onClose: () 
             ) : !r ? (
               <div className="h-16 animate-pulse rounded-inner bg-surface-muted" />
             ) : r.ganados === 0 ? (
-              <Alert tone="info">Todavía no se ha dado ningún cupón: se dan al cerrar {p.tipo === 'semana' ? 'la semana (martes)' : 'el mes (día 9)'}.</Alert>
+              <Alert tone="info">Todavía no se ha dado ningún cupón: se dan {p.tipo === 'semana' ? 'al cerrar la semana (el martes)' : 'al pagar el podio (el segundo martes de la temporada nueva)'}.</Alert>
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 {[
@@ -238,7 +241,7 @@ function Detalle({ p, onClose, onApagado }: { p: Patrocinio | null; onClose: () 
       <ConfirmDialog
         open={apagar}
         title="¿Apagar este patrocinio?"
-        body="Sale de la app (la semana o el mes quedan libres). Los cupones que ya se ganaron siguen valiendo."
+        body="Sale de la app (la semana o la temporada quedan libres). Los cupones que ya se ganaron siguen valiendo."
         confirmLabel="Apagar"
         onCancel={() => setApagar(false)}
         onConfirm={async () => {
@@ -313,7 +316,7 @@ export function Patrocinios() {
     <>
       <PageTitle
         title="Patrocinios"
-        description="Lo que compran los comercios: una semana (cupón a quien la completa), un mes de La Liga (cupón al podio) o destacar su premio en la Tienda."
+        description="Lo que compran los comercios: una semana (cupón a quien la completa), una temporada de La Liga (cupón al podio) o destacar su premio en la Tienda."
         actions={
           admin ? (
             <Button icon={Plus} onClick={() => setVender({})}>
@@ -358,17 +361,17 @@ export function Patrocinios() {
 
           <div className="grid items-start gap-5 xl:grid-cols-2">
             <Card>
-              <CardHeader icon={Trophy} title="La Liga, mes por mes" />
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                {c.meses.map((m) => (
+              <CardHeader icon={Trophy} title="La Liga, temporada por temporada" description="Un patrocinio cubre la temporada entera. Octubre de 2026 fue el último ciclo por mes." />
+              <div className="grid grid-cols-2 gap-2">
+                {c.ligas.map((m) => (
                   <Casilla
-                    key={m.mes}
-                    titulo={nombreMes(m.mes)}
-                    sub=""
+                    key={m.inicio}
+                    titulo={nombreCiclo(m)}
+                    sub={rango(m.inicio, m.fin)}
                     p={m.patrocinio}
                     ya_paso={m.ya_paso}
                     onVer={setViendo}
-                    onVender={admin ? () => setVender({ tipo: 'liga', desde: m.mes, hasta: m.hasta }) : undefined}
+                    onVender={admin ? () => setVender({ tipo: 'liga', desde: m.inicio, hasta: m.fin }) : undefined}
                   />
                 ))}
               </div>

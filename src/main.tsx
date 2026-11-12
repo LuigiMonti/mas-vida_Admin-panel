@@ -20,6 +20,10 @@ import { rutasCupones } from '@/pages/cupones/rutas';
 import { rutasEstadisticas } from '@/pages/estadisticas/rutas';
 import { rutasLiga } from '@/pages/liga/rutas';
 import { rutasPatrocinios } from '@/pages/patrocinios/rutas';
+import { rutasAntifraude } from '@/pages/antifraude/rutas';
+import { rutasTusLigas } from '@/pages/tus-ligas/rutas';
+import { rutasComercios } from '@/pages/comercios/rutas';
+import { rutasMiCuenta } from '@/pages/mi-cuenta/rutas';
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
@@ -44,6 +48,10 @@ const router = createBrowserRouter([
       ...rutasEstadisticas,
       ...rutasLiga,
       ...rutasPatrocinios,
+      ...rutasAntifraude,
+      ...rutasTusLigas,
+      ...rutasComercios,
+      ...rutasMiCuenta,
       { path: '*', element: <NoEncontrada /> },
     ],
   },

@@ -28,10 +28,27 @@ basta con que el endpoint exista con esa forma.
       (otra cuenta: `400 non_field_errors`), con el mismo límite de intentos
       que `/api/v1/login` (429). Token de knox, igual que la app. Para salir,
       el panel usa el `POST /api/v1/logout` que ya existe.
-- [ ] **Roles**: `soporte` (solo lectura + verificar y rechazar pólizas) y
-      `admin` (todo, incluida configuración y ajustes). Puede ser con grupos
-      de Django. El panel ya los aplica en `src/datos/sesion.ts`; el backend
-      tiene que validarlos en cada endpoint.
+- [ ] **Roles**: `soporte` (solo lectura + verificar y rechazar pólizas +
+      marcar cupones + cerrar las sesiones de una cuenta y quitar un bloqueo
+      por intentos) y `admin` (todo, incluida configuración, ajustes y lo que
+      no se deshace de una cuenta). Puede ser con grupos de Django. El panel
+      ya los aplica en `src/datos/sesion.ts`; el backend tiene que validarlos
+      en cada endpoint. **Por confirmar con el equipo:** que soporte pueda
+      cerrar sesiones y desbloquear (se lo dejó porque no cambian datos ni
+      dinero y son lo que pide quien llama).
+- [ ] **Doble factor (TOTP)** para las cuentas del panel. Forma:
+      `src/datos/seguridad.ts`.
+  - Login: si la cuenta lo tiene activo y no vino `codigo`, responde
+    `401 {"error": "requiere_2fa"}`; el panel pide el código y repite la
+    llamada con `{username, password, codigo}`. Código malo:
+    `400 {"codigo": ["…"]}`, y cuenta para el límite de intentos.
+  - `GET /api/v1/admin/2fa` → `{activo}`.
+  - `POST …/2fa/empezar` → `{secreto, uri}` (el `otpauth://…`); no queda activo.
+  - `POST …/2fa/confirmar` con `{codigo}` → `{activo: true}`.
+  - `POST …/2fa/quitar` con `{password}` → `{activo: false}`.
+  - El secreto se entrega una sola vez y nunca va a la bitácora. Hace falta
+    una forma de que un admin se lo quite a otro que perdió el teléfono (hoy
+    el panel no la tiene: sería desde el admin de Django).
 - [ ] **Bitácora de acciones** (modelo nuevo, append-only): quién, cuándo,
       acción, a quién afectó y detalle. La escribe el backend en cada
       endpoint que cambia algo. Nunca guarda tokens, el encabezado
@@ -51,13 +68,39 @@ basta con que el endpoint exista con esa forma.
 
 ## 2. Usuarios y pólizas (A47)
 
-- [ ] `GET /api/v1/admin/usuarios?q=&estado=`: búsqueda por correo,
-      `usuario_id` o número de póliza; filtro por estado de póliza.
+- [ ] `GET /api/v1/admin/usuarios?q=&estado=`: búsqueda por correo, nombre,
+      **nombre de miembro** (con o sin "@"), `usuario_id` o número de póliza;
+      filtro por estado de póliza. Cada fila trae `nombre`,
+      `nombre_de_miembro` y `dado_de_baja`.
 - [ ] `GET /api/v1/admin/usuarios/conteo`: cuántas cuentas hay en cada estado
       de póliza (`{todos, sin_poliza, pendiente, verificada, rechazada}`), para
       los filtros.
 - [ ] `GET /api/v1/admin/usuarios/<usuario_id>`: ficha con póliza, puntos del
-      año de póliza, nivel y saldo de monedas.
+      año de póliza, nivel y saldo de monedas. Además (11 nov):
+  - de la cuenta: `nombre` y `apellido` del registro, `nombre_de_miembro`,
+    `tiene_foto`, `correo_verificado` (si pasó el código de correo: hoy
+    `CodigoCorreo.verificado_en` se gasta al registrarse, habría que
+    guardarlo en `Usuario`) y `dado_de_baja_en`;
+  - de la póliza: `correcciones` (las `CorreccionDeNacimiento`, con `motivo` y
+    `autor`, que hoy el modelo no tiene) y `retroactivo_restituido_en`;
+  - `sesiones_activas`: cuántos tokens de knox vigentes tiene;
+  - `consentimiento`: lo mismo que `GET /api/v1/consentimiento` más
+    `historial` (todas las filas de `Consentimiento`, la más nueva primero).
+- [ ] `PATCH …/usuarios/<usuario_id>` con `{is_active, motivo}`: desactivar o
+      reactivar. Desactivar cierra sus sesiones. Solo `admin`.
+- [ ] `POST …/usuarios/<usuario_id>/cerrar-sesiones` → `{cerradas}`: lo mismo
+      que su `logout/todos`. `soporte` y `admin`.
+- [ ] `POST …/usuarios/<usuario_id>/baja` con `{motivo}`: la misma baja de
+      `POST /api/v1/cuenta/baja` (reusar el servicio), sin pedir la contraseña
+      de la persona. Solo `admin`. En la bitácora no va nada personal.
+- [ ] `POST …/usuarios/<usuario_id>/revertir-dia` con `{fecha, motivo}` →
+      `{puntos}`: una fila `ajuste_manual` que deja el día en 0. Solo dentro
+      de los 14 días y si el día tiene puntos. Solo `admin`. Falta decidir si
+      el recálculo de un sync posterior de ese día respeta la reversión (hoy
+      `asentar` volvería a acreditar la diferencia).
+- [ ] **Después de una baja o de una cuenta desactivada**, todos los endpoints
+      que cambian algo de esa cuenta responden `400`/`409` (el panel ya
+      esconde las acciones).
 - [ ] `GET …/usuarios/<usuario_id>/puntos` y `…/monedas`: los ledgers, solo
       lectura.
 - [ ] **Motivo y autor en los ajustes.** `Ledger` y `MonedaLedger` no tienen
@@ -87,7 +130,24 @@ basta con que el endpoint exista con esa forma.
       `datos_no_coinciden`, `poliza_no_vigente`, `poliza_en_otra_cuenta`,
       `otro`. Endpoint: `POST …/polizas/<usuario_id>/rechazar`.
 - [ ] `GET /api/v1/admin/retroactivo`: cuentas con retroactivo denegado, con
-      las dos fechas, el corte y lo anulado por día.
+      las dos fechas, el corte, lo anulado por día y `restituido_en`.
+- [ ] `POST …/retroactivo/<usuario_id>/restituir` con `{motivo}` →
+      `{dias, puntos, monedas}`: cuando al revisarlo fue un error y no una
+      mentira. Una fila `ajuste_manual` positiva por cada día anulado y otra
+      con las monedas; lo anulado no se borra. Una sola vez. Solo `admin`.
+      **Falta decidir** si al restituir esos días vuelven a contar para la
+      meta semanal y el desempate de las ligas (hoy los excluye
+      `corte_retroactivo`); el veredicto guardado no cambia.
+- [ ] `POST …/polizas/<usuario_id>/liberar` con `{motivo}`: una verificada
+      queda `rechazada` con `motivo_rechazo="liberada"` y libre para otra
+      cuenta. No toca los ledgers. Solo `admin`. **Falta decidir** qué pasa
+      con sus puntos del año de póliza y su lugar en La Liga en curso (el
+      panel dice: deja de canjear y sale de La Liga).
+- [ ] `POST …/polizas/<usuario_id>/corregir-nacimiento` con
+      `{fecha_nueva, motivo}` → la `CorreccionDeNacimiento` creada. Es lo que
+      hoy se hace editando la póliza en el admin de Django. Vale desde hoy;
+      el veredicto no cambia. Solo `admin`. Sumar hacia atrás no es un
+      endpoint: es un ajuste del ledger, caso por caso.
 
 ## 3. Soporte de sync (A47)
 
@@ -106,6 +166,11 @@ pierden.
     `Muestra`), y si mandaron ritmo cardíaco (de `MuestraBPM`/`Sesion`).
 - [ ] **Versión actual de la app**: el diagnóstico la compara con
       `app_version`. Hoy el panel la tiene fija (`1.1.0`).
+- [ ] **Pasos de Apple Salud (A49)**, en la misma respuesta de `…/sync`:
+  - `manda_pasos_por_hora`: si el último envío de hoy trajo `pasos_por_hora`
+    (hoy solo se anota en el log cuando falta);
+  - en cada día de la ventana, `cubierto`: si se calcula con el total de
+    Salud (`PasosHora`) o con las muestras.
 
 ## 4. Objetivo semanal (A46)
 
@@ -204,31 +269,109 @@ Forma: `src/datos/cupones.ts`. Sección `cupones`.
       también `canjeados_total` (todos los tiempos), que es lo que se resta
       del cupo.
 
-## 9. La Liga (A45)
+## 9. La Liga (A45; por temporada desde el 11 nov)
 
-Forma: `src/datos/liga.ts`. Sección `liga`.
+Forma: `src/datos/liga.ts`. Sección `liga`. **Cambió con el contrato del 8 nov:**
+La Liga dura una temporada, así que las rutas van por **ciclo** y ya no por
+mes. El ciclo se identifica por su primer día (`LigaMensual.mes`):
+`2026-10-01` (octubre, el último mes), `2026-11-01` (la primera temporada,
+hasta el 3 ene 2027), `2027-01-04`…
 
 - [ ] **`LigaMensual.nombre`** (campo nuevo, máx. 40, vacío = "La Liga"): el
-      nombre del mes ("Liga Nike"), que la app muestra debajo de "La Liga ·
-      noviembre". Lo tiene que mandar también el endpoint de La Liga de la app.
-- [ ] `GET /api/v1/admin/liga/meses`: los meses con su estado, fechas de cierre
-      y pago, podio (el fijado al cerrar o el de ahora) y su patrocinio.
-- [ ] `PATCH /api/v1/admin/liga/meses/<mes>` con `{nombre}`: solo meses que no
-      se cerraron. Solo `admin`.
-- [ ] `GET /api/v1/admin/liga/meses/<mes>/tabla`: final si cerró, provisional
-      si está en curso (de `DesgloseLigaMensual`).
+      nombre del ciclo ("Liga Nike"), que la app muestra debajo de "La Liga".
+      Lo tiene que mandar también `GET /api/v1/ligas`. **Por confirmar con
+      Daniel:** qué dice la app arriba del nombre ahora que es por temporada
+      (el panel muestra "La Liga · temporada 4").
+- [ ] `GET /api/v1/admin/liga/ciclos`: cada ciclo con `inicio`, `fin`, `ciclo`
+      (`"mes"` o `"temporada"`, como en la app), `estado`, `cierre` y `pago`
+      (los días de `dia_de_cierre` y `dia_de_pago`), `cerrada_en`,
+      `pagada_en`, `podio` (el fijado al cerrar o el de ahora) y su patrocinio.
+- [ ] `PATCH /api/v1/admin/liga/ciclos/<inicio>` con `{nombre}`: solo ciclos
+      que no se cerraron. Solo `admin`.
+- [ ] `GET /api/v1/admin/liga/ciclos/<inicio>/tabla`: final si cerró,
+      provisional si está en curso (de `DesgloseLigaMensual`). Cada fila:
+      `posicion`, `usuario_id`, `nombre`, `nombre_de_miembro`, `puntos`,
+      `pasos`, `workouts` y `monedas`.
 - [ ] `GET` y `PUT /api/v1/admin/liga/podio`: `PremioPodioLiga` (1.º, 2.º, 3.º).
 
 ## 10. Patrocinios (A45)
 
 Forma: `src/datos/patrocinios.ts`. Sección `patrocinios`.
 
-- [ ] `GET /api/v1/admin/patrocinios/calendario`: las semanas de la season y
-      los meses de La Liga, cada uno con su patrocinio o libre, y los
-      destacados.
+- [ ] `GET /api/v1/admin/patrocinios/calendario`: `semanas` (las de la
+      season), `ligas` (los ciclos de La Liga: `inicio`, `fin`, `ciclo`) y
+      `destacados`, cada uno con su patrocinio o libre. Un patrocinio de La
+      Liga va de punta a punta de su ciclo (`Patrocinio.clean` ya lo valida).
 - [ ] `POST /api/v1/admin/patrocinios`: con las mismas validaciones de
       `Patrocinio.clean()` (el panel ya las copia y las prueba). Solo `admin`.
 - [ ] `PATCH /api/v1/admin/patrocinios/<id>` con `{activo: false}`: apagar.
 - [ ] `GET /api/v1/admin/patrocinios/<id>/reporte`: para el comercio, cuántos
       ganaron su cupón y cuántos lo usaron (`{ganados, usados, vencidos,
       activos}`). Hoy `Canje.patrocinio` ya liga el cupón con su patrocinio.
+
+## 11. Antifraude (A53)
+
+Forma: `src/datos/antifraude.ts`. Sección `antifraude`.
+
+- [ ] `GET /api/v1/admin/bloqueos?usuario_id=&policy_number=`: los intentos
+      fallidos que cuentan hoy para algún límite (`IntentoFallido`), agrupados
+      por tipo y clave: `id` (opaco), `tipo`, `intentos`, `maximo`,
+      `primer_intento`, `ultimo_intento` y `bloqueado_hasta`. Como la clave es
+      un hash, el backend la compara con las cuentas y pólizas que conoce para
+      llenar `usuario_id` y `policy_number`; si no calza con ninguna, van en
+      `null`. Las claves por IP mandan `ip`. Nunca se devuelve el hash.
+- [ ] `POST /api/v1/admin/bloqueos/<id>/desbloquear`: borra esos intentos.
+      `soporte` y `admin`. Es lo que pide el contrato en "Límite de intentos"
+      (quien conoce un número de póliza puede bloquear a su titular un día).
+- [ ] **Días atípicos**: hoy un día con más de 60.000 pasos solo queda en el
+      log. Guardarlo (por ejemplo, una marca en `ResumenDiario`) y
+      `GET /api/v1/admin/antifraude/dias-atipicos` →
+      `{usuario_id, nombre, fecha, pasos, puntos_dia, en_ventana}`.
+- [ ] `GET /api/v1/admin/antifraude/datos-compartidos`: cuentas con muestras
+      del mismo `external_id` (el UUID de HealthKit). Hoy el índice único es
+      por `(usuario_id, external_id)`: hace falta poder buscar el mismo
+      `external_id` en otra cuenta. Forma: `{id, dispositivo,
+      muestras_en_comun, desde, hasta, cuentas: [{usuario_id, nombre,
+      estado_poliza}]}`.
+- [ ] `GET /api/v1/admin/antifraude/para-revisar`: una fila por cuenta con sus
+      motivos (`dia_atipico`, `retroactivo_denegado`, `intentos`,
+      `datos_compartidos`), las de más motivos primero.
+- [ ] En `GET /api/v1/admin/resumen`: `antifraude: {para_revisar, bloqueados}`.
+
+## 12. Tus Ligas (A53)
+
+Forma: `src/datos/tusLigas.ts`. Sección `tus_ligas`.
+
+- [ ] `GET /api/v1/admin/tus-ligas?q=`: los grupos (`LigaAmigos`) con `id`,
+      `nombre`, `codigo`, `creado_por` (`null` si esa cuenta se dio de baja),
+      `creado_en` y `miembros`. Busca por nombre, código o `usuario_id` de un
+      miembro.
+- [ ] `GET …/tus-ligas/<id>/miembros`: `usuario_id`, `nombre`,
+      `nombre_de_miembro`, `fecha_union`, `puntos_mes` y `es_creador`.
+- [ ] `PATCH …/tus-ligas/<id>` con `{nombre, motivo}`: para un nombre que no
+      puede quedarse (de 1 a 60 caracteres). Solo `admin`.
+- [ ] `DELETE …/tus-ligas/<id>` con `{motivo}`: saca a todos y el código deja
+      de valer. Solo `admin`.
+
+## 13. Comercios (A53)
+
+Forma: `src/datos/comercios.ts`. Sección `comercios`.
+
+- [ ] **Modelo nuevo `Comercio`**: hoy el comercio es solo un texto en
+      `Premio.comercio_aliado`. La ficha lleva `contacto_nombre`,
+      `contacto_telefono`, `contacto_correo`, `contrato_desde`,
+      `contrato_hasta`, `cuota_mensual_gtq` (decimal, viaja como texto con dos
+      decimales) y `notas`. Es interna: ningún endpoint de la app la devuelve.
+- [ ] `GET /api/v1/admin/comercios?q=`: cada comercio con su ficha, `logo` y
+      `fondo` (de su premio), `premios`, `premios_activos`,
+      `patrocinios_vigentes` y `estado_contrato` (`sin_contrato`,
+      `por_empezar`, `vigente`, `por_vencer` a 30 días o menos, `vencido`).
+- [ ] `PUT /api/v1/admin/comercios/<id>`: guarda la ficha. Solo `admin`. En la
+      bitácora va qué cambió, no los datos de contacto.
+
+## 14. Bitácora: acciones nuevas (A53)
+
+Además de las de antes: `estado_cuenta`, `cerrar_sesiones`, `baja_cuenta`,
+`liberar_poliza`, `corregir_nacimiento`, `restituir_retroactivo`,
+`revertir_dia`, `desbloquear`, `moderar_liga`, `editar_comercio` y
+`seguridad_panel`. Todas las que piden motivo lo guardan en el detalle.

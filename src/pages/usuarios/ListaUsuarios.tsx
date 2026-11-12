@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { SearchX, Users } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
-import { FilterChip } from '@/components/ui/Chip';
+import { Chip, FilterChip } from '@/components/ui/Chip';
 import { SearchInput } from '@/components/ui/Field';
 import { LevelBadge } from '@/components/ui/Niveles';
 import { PageTitle } from '@/components/ui/PageTitle';
@@ -22,13 +22,21 @@ const COLUMNAS: Column<FilaUsuario>[] = [
     header: 'Usuario',
     render: (u) => (
       <div className="flex items-center gap-2.5">
-        <Avatar name={u.correo.split('@')[0]!.replace(/[._]/g, ' ')} seed={u.usuario_id} size="sm" />
+        <Avatar name={u.nombre} seed={u.usuario_id} size="sm" />
         <div className="min-w-0">
-          <div className="truncate font-semibold">{u.correo}</div>
-          <div className="font-mono text-[11.5px] text-text-muted">{u.usuario_id}</div>
+          <div className="flex items-center gap-2">
+            <span className="truncate font-semibold">{u.nombre}</span>
+            {u.dado_de_baja ? <Chip tone="danger">Baja</Chip> : !u.is_active ? <Chip tone="neutral">Desactivada</Chip> : null}
+          </div>
+          <div className="truncate text-[12px] text-text-muted">{u.dado_de_baja ? u.usuario_id : u.correo}</div>
         </div>
       </div>
     ),
+  },
+  {
+    key: 'miembro',
+    header: 'Nombre de miembro',
+    render: (u) => (u.nombre_de_miembro ? <span className="font-mono text-[12.5px]">{u.nombre_de_miembro}</span> : <span className="text-[12.5px] text-text-muted">Sin elegir</span>),
   },
   { key: 'poliza', header: 'Póliza', render: (u) => <span className="font-mono text-[12.5px]">{u.policy_number ?? '—'}</span> },
   {
@@ -80,7 +88,7 @@ export function ListaUsuarios() {
 
   return (
     <>
-      <PageTitle title="Usuarios" description="Busca una cuenta para ver su póliza, sus puntos, sus monedas y su sync." />
+      <PageTitle title="Usuarios" description="Busca una cuenta para ver su póliza, sus puntos, sus monedas y su sync, y para atenderla: cerrar sus sesiones, desactivarla o darla de baja." />
       <Card>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
@@ -93,7 +101,7 @@ export function ListaUsuarios() {
           <SearchInput
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
-            placeholder="Correo, usuario_id o póliza"
+            placeholder="Nombre, correo, nombre de miembro o póliza"
             className="w-full sm:w-72"
             aria-label="Buscar usuario"
           />
@@ -117,7 +125,7 @@ export function ListaUsuarios() {
               caption="Usuarios"
               empty={
                 q ? (
-                  <EmptyState icon={SearchX} title="No hay cuentas con esa búsqueda" description="Prueba con el correo, el usuario_id o el número de póliza." />
+                  <EmptyState icon={SearchX} title="No hay cuentas con esa búsqueda" description="Prueba con el correo, el nombre de miembro, el usuario_id o el número de póliza." />
                 ) : (
                   <EmptyState icon={Users} title="No hay cuentas en este estado" />
                 )

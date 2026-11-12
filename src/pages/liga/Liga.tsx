@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Lock, Medal, Save, Trophy, Users, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
@@ -13,43 +13,40 @@ import { DataTable, type Column } from '@/components/ui/Table';
 import {
   guardarPodio,
   LARGO_MAXIMO_NOMBRE,
-  listarMeses,
-  NOMBRE_ESTADO_MES,
+  listarCiclos,
+  NOMBRE_ESTADO_CICLO,
   obtenerPodio,
   obtenerTabla,
-  renombrarMes,
+  renombrarCiclo,
   validarNombre,
-  type EstadoMes,
+  type CicloDeLiga,
+  type EstadoCiclo,
   type FilaTabla,
-  type MesLiga,
 } from '@/datos/liga';
 import { urlLogo } from '@/datos/premios';
 import { ErrorPanel } from '@/datos/red';
 import { puede } from '@/datos/sesion';
+import { nombreCiclo, periodoCiclo } from '@/datos/temporadas';
 import { useConsulta } from '@/datos/useConsulta';
 import { cx } from '@/lib/cx';
-import { fecha, numero } from '@/lib/formato';
+import { fecha, fechaCorta, numero } from '@/lib/formato';
 
-const TONO_MES: Record<EstadoMes, ChipTone> = { futuro: 'neutral', en_curso: 'primary', por_cerrar: 'warning', cerrado: 'warning', pagado: 'success' };
+const TONO_CICLO: Record<EstadoCiclo, ChipTone> = { futuro: 'neutral', en_curso: 'primary', por_cerrar: 'warning', cerrado: 'warning', pagado: 'success' };
 
-const fmtMes = new Intl.DateTimeFormat('es-GT', { month: 'long', timeZone: 'UTC' });
-const fmtMesAnio = new Intl.DateTimeFormat('es-GT', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-const nombreMes = (m: string) => fmtMes.format(new Date(`${m}T12:00:00Z`));
-const nombreMesAnio = (m: string) => {
-  const t = fmtMesAnio.format(new Date(`${m}T12:00:00Z`)).replace(' de ', ' ');
-  return t.charAt(0).toUpperCase() + t.slice(1);
-};
+/** "1 nov – 3 ene". */
+const rango = (c: Pick<CicloDeLiga, 'inicio' | 'fin'>) => `${fechaCorta(c.inicio).split(' ').slice(1).join(' ')} – ${fechaCorta(c.fin).split(' ').slice(1).join(' ')}`;
+const esteCiclo = (c: Pick<CicloDeLiga, 'ciclo'>) => (c.ciclo === 'mes' ? 'este mes' : 'esta temporada');
 
-/* ----------------------------------------------------------------- nombre del mes */
+/* ----------------------------------------------------------------- nombre del ciclo */
 
-function EditarNombre({ m, onGuardado }: { m: MesLiga; onGuardado: (m: MesLiga, aviso: string) => void }) {
+function EditarNombre({ m, onGuardado }: { m: CicloDeLiga; onGuardado: (m: CicloDeLiga, aviso: string) => void }) {
   const [nombre, setNombre] = useState(m.nombre);
   const [error, setError] = useState<string>();
   const [guardando, setGuardando] = useState(false);
   useEffect(() => {
     setNombre(m.nombre);
     setError(undefined);
-  }, [m.mes, m.nombre]);
+  }, [m.inicio, m.nombre]);
 
   const cerrado = !!m.cerrada_en;
   const admin = puede('editar_liga');
@@ -61,7 +58,7 @@ function EditarNombre({ m, onGuardado }: { m: MesLiga; onGuardado: (m: MesLiga, 
     setGuardando(true);
     setError(undefined);
     try {
-      const nuevo = await renombrarMes(m.mes, nombre);
+      const nuevo = await renombrarCiclo(m.inicio, nombre);
       onGuardado(nuevo, nuevo.nombre ? `Ahora se llama «${nuevo.nombre}».` : 'Vuelve a llamarse La Liga.');
     } catch (e) {
       setError(e instanceof ErrorPanel ? (e.campos?.nombre ?? e.message) : 'No se pudo guardar.');
@@ -73,8 +70,9 @@ function EditarNombre({ m, onGuardado }: { m: MesLiga; onGuardado: (m: MesLiga, 
   return (
     <div className="flex flex-col gap-4">
       <LigaBanner
-        mes={nombreMes(m.mes)}
+        periodo={periodoCiclo(m)}
         nombre={nombre}
+        sinNombre={m.ciclo === 'mes' ? 'Compite por puntos del mes' : 'Compite por puntos de la temporada'}
         podio={m.podio}
         cierre={`Cierra el ${fecha(m.cierre)} · las monedas llegan el ${fecha(m.pago)}`}
         cuponPatrocinador={m.patrocinio ? { comercio: m.patrocinio.comercio, cupon: m.patrocinio.cupon, logo: urlLogo(m.patrocinio.logo), fondo: m.patrocinio.fondo || undefined } : undefined}
@@ -82,7 +80,7 @@ function EditarNombre({ m, onGuardado }: { m: MesLiga; onGuardado: (m: MesLiga, 
       {cerrado ? (
         <Alert tone="info">
           <span className="inline-flex items-center gap-1.5">
-            <Lock size={14} aria-hidden /> No se puede cambiar el nombre: este mes ya se cerró.
+            <Lock size={14} aria-hidden /> No se puede cambiar el nombre: este ciclo ya se cerró.
           </span>
         </Alert>
       ) : !admin ? (
@@ -92,13 +90,13 @@ function EditarNombre({ m, onGuardado }: { m: MesLiga; onGuardado: (m: MesLiga, 
           <div className="flex flex-wrap items-end gap-2">
             <div className="min-w-0 flex-1">
               <TextField
-                label="Nombre de este mes"
+                label={m.ciclo === 'mes' ? 'Nombre de este mes' : 'Nombre de esta temporada'}
                 value={nombre}
                 maxLength={LARGO_MAXIMO_NOMBRE + 10}
                 onChange={(e) => setNombre(e.target.value)}
                 placeholder="Vacío: «La Liga»"
                 error={error ?? vivo ?? undefined}
-                hint={`${nombre.trim().length} de ${LARGO_MAXIMO_NOMBRE}. Abajo de «La Liga · ${nombreMes(m.mes)}» en la app.`}
+                hint={`${nombre.trim().length} de ${LARGO_MAXIMO_NOMBRE}. Abajo de «La Liga · ${periodoCiclo(m)}» en la app.`}
               />
             </div>
             <Button icon={Save} onClick={guardar} disabled={!cambiado || guardando || !!vivo} className="mb-[26px]">
@@ -107,7 +105,7 @@ function EditarNombre({ m, onGuardado }: { m: MesLiga; onGuardado: (m: MesLiga, 
           </div>
           {sugerido && nombre.trim() !== sugerido && (
             <button type="button" onClick={() => setNombre(sugerido)} className="inline-flex w-fit items-center gap-1.5 rounded-full bg-primary-tint px-3 py-1 text-[12.5px] font-semibold text-primary hover:bg-primary-tint-strong">
-              <Wand2 size={13} aria-hidden /> Usar «{sugerido}» (patrocina este mes)
+              <Wand2 size={13} aria-hidden /> Usar «{sugerido}» (patrocina {esteCiclo(m)})
             </button>
           )}
         </div>
@@ -135,7 +133,7 @@ function Podio({ onGuardado }: { onGuardado: () => void }) {
     setError(undefined);
     try {
       await guardarPodio(v.map(Number) as [number, number, number]);
-      setAviso('Montos guardados. Valen para los meses que todavía no se cierran.');
+      setAviso('Montos guardados. Valen para los ciclos que todavía no se cierran.');
       podio.recargar();
       onGuardado();
     } catch (e) {
@@ -147,7 +145,7 @@ function Podio({ onGuardado }: { onGuardado: () => void }) {
 
   return (
     <Card>
-      <CardHeader icon={Medal} title="Monedas del podio" description="Se fijan al cerrar cada mes: cambiarlas no toca los meses ya cerrados." />
+      <CardHeader icon={Medal} title="Monedas del podio" description="Se fijan al cerrar cada temporada: cambiarlas no toca las ya cerradas." />
       {podio.estado === 'error' ? (
         <ErrorState description={podio.error} onRetry={podio.recargar} />
       ) : (
@@ -197,15 +195,17 @@ const COLUMNAS: Column<FilaTabla>[] = [
       <div className="flex items-center gap-2.5">
         <Avatar name={f.nombre} seed={f.usuario_id} size="sm" />
         <div>
-          <div className="font-semibold">{f.nombre}</div>
-          <div className="font-mono text-[11.5px] text-text-muted">{f.usuario_id}</div>
+          <Link to={`/usuarios/${f.usuario_id}`} className="font-semibold hover:text-primary hover:underline">
+            {f.nombre}
+          </Link>
+          <div className="font-mono text-[11.5px] text-text-muted">{f.nombre_de_miembro ?? 'sin nombre de miembro'}</div>
         </div>
       </div>
     ),
   },
-  { key: 'puntos', header: 'Puntos del mes', numeric: true, render: (f) => <span className="font-display font-bold">{numero(f.puntos_mes)}</span> },
-  { key: 'pasos', header: 'Pasos (1.er desempate)', numeric: true, render: (f) => numero(f.pasos_acumulados_mes) },
-  { key: 'workouts', header: 'Workouts (2.º)', numeric: true, render: (f) => f.workouts_acumulados_mes },
+  { key: 'puntos', header: 'Puntos', numeric: true, render: (f) => <span className="font-display font-bold">{numero(f.puntos)}</span> },
+  { key: 'pasos', header: 'Pasos (1.er desempate)', numeric: true, render: (f) => numero(f.pasos) },
+  { key: 'workouts', header: 'Workouts (2.º)', numeric: true, render: (f) => f.workouts },
   { key: 'monedas', header: 'Monedas', numeric: true, render: (f) => (f.monedas ? <span className="font-semibold text-coin">+{f.monedas}</span> : <span className="text-text-muted">—</span>) },
 ];
 
@@ -215,17 +215,17 @@ export function Liga() {
   const [params, setParams] = useSearchParams();
   const [vuelta, setVuelta] = useState(0);
   const [aviso, setAviso] = useState<string>();
-  const meses = useConsulta(listarMeses, [vuelta]);
+  const meses = useConsulta(listarCiclos, [vuelta]);
   const lista = meses.datos ?? [];
-  const elegido = lista.find((m) => m.mes === params.get('mes')) ?? lista.find((m) => m.estado === 'en_curso') ?? lista[0];
-  const tabla = useConsulta(() => (elegido ? obtenerTabla(elegido.mes) : Promise.resolve([])), [elegido?.mes, vuelta]);
+  const elegido = lista.find((m) => m.inicio === params.get('ciclo')) ?? lista.find((m) => m.estado === 'en_curso') ?? lista[0];
+  const tabla = useConsulta(() => (elegido ? obtenerTabla(elegido.inicio) : Promise.resolve([])), [elegido?.inicio, vuelta]);
 
   return (
     <>
       <PageTitle
         title="La"
         accent="Liga"
-        description="Un solo grupo con todos los que tienen póliza verificada. Compite por puntos del mes; se cierra el día 2 y el podio se paga el día 9."
+        description="Un solo grupo con todos los que tienen póliza verificada. Compite por puntos de la temporada (13 semanas); se cierra el martes de la temporada nueva y el podio se paga el martes siguiente."
       />
       {aviso && (
         <Alert tone="success" className="mb-5">
@@ -244,22 +244,24 @@ export function Liga() {
             <Card className="p-3">
               <ul className="flex flex-col gap-1">
                 {lista.map((m) => (
-                  <li key={m.mes}>
+                  <li key={m.inicio}>
                     <button
                       type="button"
                       onClick={() => {
-                        setParams({ mes: m.mes }, { replace: true });
+                        setParams({ ciclo: m.inicio }, { replace: true });
                         setAviso(undefined);
                       }}
-                      className={cx('flex w-full items-center justify-between gap-3 rounded-inner px-3 py-2.5 text-left transition-colors', m.mes === elegido.mes ? 'bg-primary-tint' : 'hover:bg-surface-muted')}
-                      aria-current={m.mes === elegido.mes ? 'true' : undefined}
+                      className={cx('flex w-full items-center justify-between gap-3 rounded-inner px-3 py-2.5 text-left transition-colors', m.inicio === elegido.inicio ? 'bg-primary-tint' : 'hover:bg-surface-muted')}
+                      aria-current={m.inicio === elegido.inicio ? 'true' : undefined}
                     >
                       <div className="min-w-0">
-                        <div className="font-semibold">{nombreMesAnio(m.mes)}</div>
-                        <div className="truncate text-[12px] text-text-muted">{m.nombre || 'La Liga'}</div>
+                        <div className="font-semibold">{nombreCiclo(m)}</div>
+                        <div className="truncate text-[12px] text-text-muted">
+                          {rango(m)} · {m.nombre || 'La Liga'}
+                        </div>
                       </div>
-                      <Chip tone={TONO_MES[m.estado]} dot>
-                        {NOMBRE_ESTADO_MES[m.estado]}
+                      <Chip tone={TONO_CICLO[m.estado]} dot>
+                        {NOMBRE_ESTADO_CICLO[m.estado]}
                       </Chip>
                     </button>
                   </li>
@@ -273,13 +275,14 @@ export function Liga() {
             <Card>
               <CardHeader
                 icon={Trophy}
-                title={nombreMesAnio(elegido.mes)}
+                title={nombreCiclo(elegido)}
                 description={
-                  elegido.estado === 'pagado'
-                    ? `Cerrado el ${fecha(elegido.cerrada_en!)} · pagado el ${fecha(elegido.pagada_en!)}`
+                  `Del ${fecha(elegido.inicio)} al ${fecha(elegido.fin)} · ` +
+                  (elegido.estado === 'pagado'
+                    ? `cerrado el ${fecha(elegido.cerrada_en!)} · pagado el ${fecha(elegido.pagada_en!)}`
                     : elegido.estado === 'cerrado'
-                      ? `Cerrado el ${fecha(elegido.cerrada_en!)} · el podio se paga el ${fecha(elegido.pago)}`
-                      : `Se cierra el ${fecha(elegido.cierre)} · el podio se paga el ${fecha(elegido.pago)}`
+                      ? `cerrado el ${fecha(elegido.cerrada_en!)} · el podio se paga el ${fecha(elegido.pago)}`
+                      : `se cierra el ${fecha(elegido.cierre)} · el podio se paga el ${fecha(elegido.pago)}`)
                 }
                 action={
                   elegido.total_participantes ? (
@@ -301,7 +304,11 @@ export function Liga() {
             <Card>
               <CardHeader
                 title={elegido.estado === 'en_curso' || elegido.estado === 'por_cerrar' ? 'Tabla provisional' : 'Tabla final'}
-                description={elegido.estado === 'en_curso' ? 'Va cambiando con cada sync. La final se fija el día 2.' : 'Puntos del mes; a igualdad, más pasos y después más workouts.'}
+                description={
+                  elegido.estado === 'en_curso'
+                    ? `Va cambiando con cada sync. La final se fija el ${fecha(elegido.cierre)}. Los pasos y los workouts solo se ven aquí: en la app nunca.`
+                    : 'Puntos del ciclo; a igualdad, más pasos y después más workouts.'
+                }
               />
               {tabla.estado === 'error' ? (
                 <ErrorState description={tabla.error} onRetry={tabla.recargar} />
@@ -313,7 +320,7 @@ export function Liga() {
                   rows={tabla.datos}
                   rowKey={(f) => f.usuario_id}
                   caption="Tabla de La Liga"
-                  empty={<EmptyState icon={Trophy} title="Este mes todavía no empieza" />}
+                  empty={<EmptyState icon={Trophy} title="Este ciclo todavía no empieza" />}
                 />
               )}
             </Card>

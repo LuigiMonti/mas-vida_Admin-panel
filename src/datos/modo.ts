@@ -24,7 +24,10 @@ export type Seccion =
   | 'premios'
   | 'cupones'
   | 'liga'
-  | 'patrocinios';
+  | 'patrocinios'
+  | 'antifraude'
+  | 'tus_ligas'
+  | 'comercios';
 
 export const SECCIONES: readonly Seccion[] = [
   'sesion',
@@ -40,6 +43,9 @@ export const SECCIONES: readonly Seccion[] = [
   'cupones',
   'liga',
   'patrocinios',
+  'antifraude',
+  'tus_ligas',
+  'comercios',
 ];
 
 interface Config {

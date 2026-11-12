@@ -215,7 +215,10 @@ export function Cierres() {
                     <li key={x.tipo} className="flex items-center justify-between gap-3 rounded-inner bg-surface-muted px-4 py-2.5">
                       <div>
                         <div className="text-[13.5px] font-semibold">{NOMBRE_CORRIDA[x.tipo]}</div>
-                        <div className="text-[12px] text-text-muted">{CUANDO_CORRE[x.tipo]}</div>
+                        <div className="text-[12px] text-text-muted">
+                          {CUANDO_CORRE[x.tipo]}
+                          {x.detalle ? ` · ${x.detalle}` : ''}
+                        </div>
                       </div>
                       <span className="text-[13px] whitespace-nowrap">{fechaHora(x.cuando)}</span>
                     </li>

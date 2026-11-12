@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router';
-import { CalendarCheck, CalendarClock, Coins, FileCheck2, Gift, ScanLine, Search, ShieldCheck, Target, Trophy, Users } from 'lucide-react';
+import { Link } from 'react-router';
+import { CalendarCheck, CalendarClock, Coins, FileCheck2, Gift, ScanLine, Search, ShieldAlert, ShieldCheck, Target, Trophy, Users } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, MetricCard } from '@/components/ui/Card';
 import { PageTitle } from '@/components/ui/PageTitle';
@@ -70,6 +71,22 @@ function Atencion({ r }: { r: ResumenPanel }) {
           {r.polizas_pendientes} pólizas esperan verificación. La más vieja lleva {r.pendiente_mas_vieja_dias} días.
         </Alert>
       )}
+      {r.antifraude.bloqueados > 0 && (
+        <Alert tone="warning">
+          {r.antifraude.bloqueados === 1 ? 'Hay 1 límite de intentos bloqueado' : `Hay ${r.antifraude.bloqueados} límites de intentos bloqueados`}: puede ser un titular que no logra vincular su póliza.{' '}
+          <Link to="/antifraude?tab=bloqueos" className="font-semibold underline">
+            Ver bloqueos
+          </Link>
+        </Alert>
+      )}
+      {r.antifraude.para_revisar > 0 && (
+        <Alert tone="info">
+          {r.antifraude.para_revisar === 1 ? '1 cuenta tiene' : `${r.antifraude.para_revisar} cuentas tienen`} algo que revisar en antifraude.{' '}
+          <Link to="/antifraude" className="font-semibold underline">
+            Revisar
+          </Link>
+        </Alert>
+      )}
     </div>
   );
 }
@@ -123,7 +140,10 @@ export function Inicio() {
                   Nuevo premio
                 </Button>
                 <Button variant="secondary" size="sm" icon={Trophy} onClick={() => ir('/liga')}>
-                  La Liga del mes
+                  La Liga de la temporada
+                </Button>
+                <Button variant="secondary" size="sm" icon={ShieldAlert} onClick={() => ir('/antifraude')}>
+                  Antifraude
                 </Button>
               </div>
             </Card>

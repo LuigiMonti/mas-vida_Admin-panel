@@ -25,15 +25,27 @@ const ACCION: Record<TipoAccion, { label: string; tone: ChipTone }> = {
   marcar_cupon: { label: 'Cupón usado', tone: 'success' },
   editar_liga: { label: 'La Liga', tone: 'primary' },
   editar_patrocinio: { label: 'Patrocinio', tone: 'coin' },
+  estado_cuenta: { label: 'Activó o desactivó', tone: 'warning' },
+  cerrar_sesiones: { label: 'Cerró sesiones', tone: 'primary' },
+  baja_cuenta: { label: 'Baja de cuenta', tone: 'danger' },
+  liberar_poliza: { label: 'Liberó póliza', tone: 'warning' },
+  corregir_nacimiento: { label: 'Corrigió nacimiento', tone: 'warning' },
+  restituir_retroactivo: { label: 'Restituyó retroactivo', tone: 'success' },
+  revertir_dia: { label: 'Revirtió un día', tone: 'warning' },
+  desbloquear: { label: 'Desbloqueó', tone: 'primary' },
+  moderar_liga: { label: 'Tus Ligas', tone: 'primary' },
+  editar_comercio: { label: 'Comercio', tone: 'coin' },
+  seguridad_panel: { label: 'Doble factor', tone: 'neutral' },
 };
 
-type Grupo = 'todas' | 'polizas' | 'ajustes' | 'premios' | 'config';
+type Grupo = 'todas' | 'cuentas' | 'polizas' | 'ajustes' | 'premios' | 'config';
 const GRUPOS: Record<Grupo, { label: string; acciones?: TipoAccion[] }> = {
   todas: { label: 'Todas' },
-  polizas: { label: 'Pólizas', acciones: ['verificar_poliza', 'rechazar_poliza'] },
-  ajustes: { label: 'Ajustes', acciones: ['ajuste_puntos', 'ajuste_monedas'] },
-  premios: { label: 'Premios y cupones', acciones: ['editar_premio', 'marcar_cupon', 'editar_patrocinio'] },
-  config: { label: 'Configuración y cierres', acciones: ['editar_objetivo', 'editar_reglas', 'correr_cierre', 'editar_liga'] },
+  cuentas: { label: 'Cuentas', acciones: ['estado_cuenta', 'cerrar_sesiones', 'baja_cuenta', 'desbloquear', 'seguridad_panel'] },
+  polizas: { label: 'Pólizas', acciones: ['verificar_poliza', 'rechazar_poliza', 'liberar_poliza', 'corregir_nacimiento', 'restituir_retroactivo'] },
+  ajustes: { label: 'Ajustes', acciones: ['ajuste_puntos', 'ajuste_monedas', 'revertir_dia'] },
+  premios: { label: 'Premios y cupones', acciones: ['editar_premio', 'marcar_cupon', 'editar_patrocinio', 'editar_comercio'] },
+  config: { label: 'Configuración y cierres', acciones: ['editar_objetivo', 'editar_reglas', 'correr_cierre', 'editar_liga', 'moderar_liga'] },
 };
 
 const COLUMNAS: Column<EntradaBitacora>[] = [

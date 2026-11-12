@@ -2,30 +2,38 @@
  * La Liga: liga.LigaMensual, liga.PremioPodioLiga y liga.DesgloseLigaMensual.
  * Futuro: /api/v1/admin/liga/…
  *
- * - Un solo grupo con todos los que tienen póliza verificada; ciclo mensual;
- *   compite por puntos del mes; desempata por pasos y después por workouts.
- * - El mes se cierra el día 2 (tabla final) y el podio se paga el día 9.
+ * - Un solo grupo con todos los que tienen póliza verificada. Compite por
+ *   puntos del ciclo; desempata por pasos y después por workouts.
+ * - El ciclo es una TEMPORADA (8 nov 2026): las 13 semanas de la season.
+ *   Octubre de 2026 fue el último ciclo mensual y la primera temporada cuenta
+ *   desde el 1 nov 2026 (ver temporadas.ts). `LigaMensual.mes` guarda el
+ *   primer día del ciclo: aquí es `inicio`.
+ * - Se cierra el martes de la temporada nueva (tabla final) y el podio se
+ *   paga el martes siguiente.
  * - Las monedas del podio se fijan al cerrar: cambiar los montos vale para
- *   los meses que todavía no se cierran.
- * - `nombre` por mes ("Liga Nike") NO existe en LigaMensual: ver
+ *   los ciclos que todavía no se cierran.
+ * - `nombre` por ciclo ("Liga Nike") NO existe en LigaMensual: ver
  *   PENDIENTES_BACKEND.md. Vacío = "La Liga".
  */
 import { pedir } from './api';
 import { registrar } from './bitacora';
 import { conectado } from './modo';
-import { patrocinioDeLigaMock, sumarDias, ultimoDelMes, type Patrocinio } from './patrocinios';
+import { patrocinioDeLigaMock, type Patrocinio } from './patrocinios';
 import { copia, ErrorPanel, hoyGT, simularRed } from './red';
 import { puede } from './sesion';
+import { ciclosDeLiga, diasEntre, nombreCiclo, PRIMER_CICLO_LIGA, type TipoCiclo } from './temporadas';
 
-export type EstadoMes = 'futuro' | 'en_curso' | 'por_cerrar' | 'cerrado' | 'pagado';
+export type EstadoCiclo = 'futuro' | 'en_curso' | 'por_cerrar' | 'cerrado' | 'pagado';
 
-export interface MesLiga {
-  /** Día 1 del mes: "2026-11-01". */
-  mes: string;
+export interface CicloDeLiga {
+  /** Primer día del ciclo ("2026-11-01"): lo identifica. */
+  inicio: string;
+  fin: string;
+  ciclo: TipoCiclo;
   nombre: string;
-  estado: EstadoMes;
+  estado: EstadoCiclo;
   total_participantes: number | null;
-  /** Cuándo se cierra (día 2) y cuándo se paga (día 9) del mes siguiente. */
+  /** Desde qué día se cierra y desde cuál se paga el podio. */
   cierre: string;
   pago: string;
   cerrada_en: string | null;
@@ -39,13 +47,16 @@ export interface FilaTabla {
   posicion: number;
   usuario_id: string;
   nombre: string;
-  puntos_mes: number;
-  pasos_acumulados_mes: number;
-  workouts_acumulados_mes: number;
+  /** Como se ve en la app ("ana.lopez"). null si todavía no lo eligió. */
+  nombre_de_miembro: string | null;
+  puntos: number;
+  /** Desempates. En la app nunca se muestran. */
+  pasos: number;
+  workouts: number;
   monedas: number;
 }
 
-export const NOMBRE_ESTADO_MES: Record<EstadoMes, string> = {
+export const NOMBRE_ESTADO_CICLO: Record<EstadoCiclo, string> = {
   futuro: 'Por venir',
   en_curso: 'En curso',
   por_cerrar: 'Por cerrar',
@@ -61,8 +72,12 @@ const HOY = hoyGT();
 
 let podioActual: [number, number, number] = [30, 20, 10];
 
-interface MesMock {
-  mes: string;
+interface CicloMock {
+  inicio: string;
+  fin: string;
+  ciclo: TipoCiclo;
+  cierre: string;
+  pago: string;
   nombre: string;
   total_participantes: number | null;
   cerrada_en: string | null;
@@ -70,95 +85,92 @@ interface MesMock {
   podio_fijado: [number, number, number] | null;
 }
 
-const meses: MesMock[] = [];
-(function sembrar() {
-  let mes = '2026-09-01';
-  for (let i = 0; i < 6; i++) {
-    const fin = ultimoDelMes(mes);
-    const cierre = sumarDias(fin, 2);
-    const pago = sumarDias(fin, 9);
-    meses.push({
-      mes,
-      nombre: mes === '2026-09-01' ? 'Liga Smart Fit' : mes === '2026-11-01' ? 'Liga Sportcity' : '',
-      total_participantes: cierre <= HOY ? 48 + i * 13 : null,
-      cerrada_en: cierre <= HOY ? cierre : null,
-      pagada_en: pago <= HOY ? pago : null,
-      podio_fijado: cierre <= HOY ? [30, 20, 10] : null,
-    });
-    mes = sumarDias(fin, 1);
-  }
-})();
+// Octubre de 2026 (el último mes), la temporada en curso y las dos que siguen.
+const NOMBRES_DE_MUESTRA: Record<string, string> = { '2026-10-01': 'Liga Smart Fit', '2026-11-01': 'Liga Sportcity' };
+const ciclos: CicloMock[] = ciclosDeLiga(PRIMER_CICLO_LIGA, 4).map((c, i) => ({
+  ...c,
+  nombre: NOMBRES_DE_MUESTRA[c.inicio] ?? '',
+  total_participantes: c.cierre <= HOY ? 61 + i * 13 : null,
+  cerrada_en: c.cierre <= HOY ? c.cierre : null,
+  pagada_en: c.pago <= HOY ? c.pago : null,
+  podio_fijado: c.cierre <= HOY ? [30, 20, 10] : null,
+}));
 
-function estadoDe(m: MesMock): EstadoMes {
-  const fin = ultimoDelMes(m.mes);
-  if (m.pagada_en) return 'pagado';
-  if (m.cerrada_en) return 'cerrado';
-  if (m.mes > HOY) return 'futuro';
-  if (HOY <= fin) return 'en_curso';
+function estadoDe(c: CicloMock): EstadoCiclo {
+  if (c.pagada_en) return 'pagado';
+  if (c.cerrada_en) return 'cerrado';
+  if (c.inicio > HOY) return 'futuro';
+  if (HOY <= c.fin) return 'en_curso';
   return 'por_cerrar';
 }
 
-function aPublico(m: MesMock): MesLiga {
-  const fin = ultimoDelMes(m.mes);
-  const pat = patrocinioDeLigaMock(m.mes);
+function aPublico(c: CicloMock): CicloDeLiga {
+  const pat = patrocinioDeLigaMock(c.inicio);
   return {
-    mes: m.mes,
-    nombre: m.nombre,
-    estado: estadoDe(m),
-    total_participantes: m.total_participantes,
-    cierre: sumarDias(fin, 2),
-    pago: sumarDias(fin, 9),
-    cerrada_en: m.cerrada_en,
-    pagada_en: m.pagada_en,
-    podio: m.podio_fijado ?? podioActual,
+    inicio: c.inicio,
+    fin: c.fin,
+    ciclo: c.ciclo,
+    nombre: c.nombre,
+    estado: estadoDe(c),
+    total_participantes: c.total_participantes,
+    cierre: c.cierre,
+    pago: c.pago,
+    cerrada_en: c.cerrada_en,
+    pagada_en: c.pagada_en,
+    podio: c.podio_fijado ?? podioActual,
     patrocinio: pat ? { comercio: pat.comercio, cupon: pat.cupon, logo: pat.logo, fondo: pat.fondo, acento: pat.acento } : null,
   };
 }
 
 const NOMBRES = ['Andrea Castillo', 'Ricardo Monzón', 'Sofía Ramírez', 'Carlos Méndez', 'Ana Gálvez', 'Gabriela Soto', 'José Luis Pérez', 'Marco Villagrán', 'Lucía Herrera', 'Diego López', 'Paola Reyes', 'Javier Morales', 'Fernanda Cruz', 'Luis Ortiz', 'Daniela Paz'];
 const IDS = ['u_8f21', 'u_51be', 'u_4b6c', 'u_d118', 'u_e5d9', 'u_b2f8', 'u_3a90', 'u_6c40', 'u_9e02', 'u_7f3a', 'u_a301', 'u_a302', 'u_a303', 'u_a304', 'u_a305'];
+// Diego López (u_7f3a) todavía no elige su nombre de miembro: sale como en la app vieja.
+const miembro = (nombre: string, id: string) =>
+  id === 'u_7f3a' ? null : nombre.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().split(/\s+/).filter((_, i, a) => i === 0 || i === a.length - 1).join('.');
 
-function tablaMock(m: MesMock): FilaTabla[] {
-  let h = [...m.mes].reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7);
+function tablaMock(c: CicloMock): FilaTabla[] {
+  let h = [...c.inicio].reduce((a, x) => (a * 31 + x.charCodeAt(0)) | 0, 7);
   const r = () => ((h = (Math.imul(h ^ (h >>> 15), 2246822507) ^ 0x9e3779b9) | 0) >>> 0) / 4294967296;
-  const enCurso = estadoDe(m) === 'en_curso';
-  const diasJugados = enCurso ? Number(HOY.slice(8, 10)) : Number(ultimoDelMes(m.mes).slice(8, 10));
+  const hasta = estadoDe(c) === 'en_curso' ? HOY : c.fin;
+  const diasJugados = diasEntre(c.inicio, hasta) + 1;
   const filas = NOMBRES.map((nombre, i) => {
     const ritmo = 40 + r() * 110;
     return {
       usuario_id: IDS[i]!,
       nombre,
-      puntos_mes: Math.round(ritmo * diasJugados),
-      pasos_acumulados_mes: Math.round((5000 + r() * 9000) * diasJugados),
-      workouts_acumulados_mes: Math.round(r() * diasJugados * 0.5),
+      nombre_de_miembro: miembro(nombre, IDS[i]!),
+      puntos: Math.round(ritmo * diasJugados),
+      pasos: Math.round((5000 + r() * 9000) * diasJugados),
+      workouts: Math.round(r() * diasJugados * 0.5),
     };
   });
   // Un empate de puntos para que se vea el desempate por pasos.
-  filas[2]!.puntos_mes = filas[1]!.puntos_mes;
-  filas.sort((a, b) => b.puntos_mes - a.puntos_mes || b.pasos_acumulados_mes - a.pasos_acumulados_mes || b.workouts_acumulados_mes - a.workouts_acumulados_mes);
-  const podio = m.podio_fijado ?? podioActual;
+  filas[2]!.puntos = filas[1]!.puntos;
+  filas.sort((a, b) => b.puntos - a.puntos || b.pasos - a.pasos || b.workouts - a.workouts);
+  const podio = c.podio_fijado ?? podioActual;
   return filas.map((f, i) => ({ ...f, posicion: i + 1, monedas: i < 3 ? podio[i]! : 0 }));
 }
 
-function buscar(mes: string): MesMock {
-  const m = meses.find((x) => x.mes === mes);
-  if (!m) throw new ErrorPanel('Ese mes de La Liga no existe.', undefined, { estado: 404 });
-  return m;
+function buscar(inicio: string): CicloMock {
+  const c = ciclos.find((x) => x.inicio === inicio);
+  if (!c) throw new ErrorPanel('Ese ciclo de La Liga no existe.', undefined, { estado: 404 });
+  return c;
 }
 
 /* ================================================================= API */
 
-export function listarMeses(): Promise<MesLiga[]> {
-  if (conectado('liga')) return pedir<MesLiga[]>('/api/v1/admin/liga/meses');
-  return simularRed(() => copia([...meses].reverse().map(aPublico)));
+/** Los ciclos de La Liga, el más nuevo primero. */
+export function listarCiclos(): Promise<CicloDeLiga[]> {
+  if (conectado('liga')) return pedir<CicloDeLiga[]>('/api/v1/admin/liga/ciclos');
+  return simularRed(() => copia([...ciclos].reverse().map(aPublico)));
 }
 
-/** La tabla del mes: la final si ya cerró, la provisional si está en curso. */
-export function obtenerTabla(mes: string): Promise<FilaTabla[]> {
-  if (conectado('liga')) return pedir<FilaTabla[]>(`/api/v1/admin/liga/meses/${mes}/tabla`);
+/** La tabla del ciclo: la final si ya cerró, la provisional si está en curso. */
+export function obtenerTabla(inicio: string): Promise<FilaTabla[]> {
+  if (conectado('liga')) return pedir<FilaTabla[]>(`/api/v1/admin/liga/ciclos/${inicio}/tabla`);
   return simularRed(() => {
-    const m = buscar(mes);
-    return estadoDe(m) === 'futuro' ? [] : tablaMock(m);
+    const c = buscar(inicio);
+    return estadoDe(c) === 'futuro' ? [] : tablaMock(c);
   });
 }
 
@@ -169,19 +181,19 @@ export function validarNombre(nombre: string): string | null {
   return null;
 }
 
-/** Cambia el nombre de un mes que todavía no se cierra. Vacío = "La Liga". */
-export function renombrarMes(mes: string, nombre: string): Promise<MesLiga> {
-  if (conectado('liga')) return pedir<MesLiga>(`/api/v1/admin/liga/meses/${mes}`, { metodo: 'PATCH', cuerpo: { nombre } });
+/** Cambia el nombre de un ciclo que todavía no se cierra. Vacío = "La Liga". */
+export function renombrarCiclo(inicio: string, nombre: string): Promise<CicloDeLiga> {
+  if (conectado('liga')) return pedir<CicloDeLiga>(`/api/v1/admin/liga/ciclos/${inicio}`, { metodo: 'PATCH', cuerpo: { nombre } });
   return simularRed(() => {
     if (!puede('editar_liga')) throw new ErrorPanel('Tu rol no puede cambiar La Liga.');
-    const m = buscar(mes);
-    if (m.cerrada_en) throw new ErrorPanel('No se puede cambiar: ese mes ya se cerró.');
+    const c = buscar(inicio);
+    if (c.cerrada_en) throw new ErrorPanel('No se puede cambiar: ese ciclo ya se cerró.');
     const error = validarNombre(nombre);
     if (error) throw new ErrorPanel('Revisa el nombre.', { nombre: error });
-    const antes = m.nombre || 'La Liga';
-    m.nombre = nombre.trim();
-    registrar('editar_liga', `La Liga · ${mes.slice(0, 7)}`, `Nombre: «${antes}» → «${m.nombre || 'La Liga'}»`);
-    return copia(aPublico(m));
+    const antes = c.nombre || 'La Liga';
+    c.nombre = nombre.trim();
+    registrar('editar_liga', `La Liga · ${nombreCiclo(c)}`, `Nombre: «${antes}» → «${c.nombre || 'La Liga'}»`);
+    return copia(aPublico(c));
   });
 }
 
@@ -190,7 +202,7 @@ export function obtenerPodio(): Promise<[number, number, number]> {
   return simularRed(() => [...podioActual] as [number, number, number], 200);
 }
 
-/** PremioPodioLiga: monedas de 1.º, 2.º y 3.º. Vale para los meses que no se cerraron. */
+/** PremioPodioLiga: monedas de 1.º, 2.º y 3.º. Vale para los ciclos que no se cerraron. */
 export function guardarPodio(podio: [number, number, number]): Promise<void> {
   if (conectado('liga')) return pedir<void>('/api/v1/admin/liga/podio', { metodo: 'PUT', cuerpo: podio.map((monedas, i) => ({ puesto: i + 1, monedas })) });
   return simularRed(() => {

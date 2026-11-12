@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { Check, FileCheck2, FileSearch, Inbox, SearchX, X } from 'lucide-react';
+import { CalendarCog, Check, FileCheck2, FileSearch, Inbox, SearchX, Unlink, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader } from '@/components/ui/Card';
-import { FilterChip } from '@/components/ui/Chip';
+import { Chip, FilterChip } from '@/components/ui/Chip';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Dialog } from '@/components/ui/Dialog';
 import { SearchInput, SelectField, TextField } from '@/components/ui/Field';
+import { MotivoDialog } from '@/components/ui/MotivoDialog';
 import { PageTitle } from '@/components/ui/PageTitle';
 import { Alert, EmptyState, ErrorState } from '@/components/ui/States';
 import { DataTable, type Column } from '@/components/ui/Table';
 import {
+  corregirNacimiento,
   HOY,
+  liberarPoliza,
   listarPolizas,
+  MOTIVOS_PARA_RECHAZAR,
   MOTIVOS_RECHAZO,
   rechazarPoliza,
   veredictoPrevio,
@@ -24,6 +28,7 @@ import { ErrorPanel } from '@/datos/red';
 import { puede } from '@/datos/sesion';
 import { useConsulta } from '@/datos/useConsulta';
 import { fecha, haceCuanto } from '@/lib/formato';
+import { AvisoBloqueos } from '../antifraude/Bloqueos';
 import { EstadoPolizaChip, motivoRechazo, NOMBRE_ESTADO, RetroactivoChip } from '../usuarios/comun';
 
 type Filtro = Exclude<EstadoPoliza, 'sin_poliza'> | 'todas';
@@ -66,6 +71,11 @@ function PanelPoliza({ f, onCambio }: { f: FilaPoliza; onCambio: (mensaje: strin
   const [confirmarDenegado, setConfirmarDenegado] = useState(false);
   const [rechazo, setRechazo] = useState(false);
   const [motivo, setMotivo] = useState('');
+  const [liberar, setLiberar] = useState(false);
+  const [corregir, setCorregir] = useState(false);
+  const [fechaNueva, setFechaNueva] = useState('');
+  const [errorCorreccion, setErrorCorreccion] = useState<ErrorPanel>();
+  const administrar = puede('administrar_cuenta');
 
   useEffect(() => {
     setConfirmada(p.birth_date_confirmada ?? '');
@@ -125,7 +135,10 @@ function PanelPoliza({ f, onCambio }: { f: FilaPoliza; onCambio: (mensaje: strin
       <div className="mb-4 flex flex-wrap gap-2">
         <EstadoPolizaChip estado={p.estado_verificacion} />
         <RetroactivoChip r={p.retroactivo} />
+        {p.retroactivo_restituido_en && <Chip tone="success">Restituido</Chip>}
       </div>
+
+      <AvisoBloqueos policy_number={p.policy_number} onCambio={(m) => onCambio(m, 'success')} className="mb-4" />
 
       <dl className="mb-5 grid grid-cols-2 gap-x-4 gap-y-3 text-[13.5px]">
         <div>
@@ -148,14 +161,54 @@ function PanelPoliza({ f, onCambio }: { f: FilaPoliza; onCambio: (mensaje: strin
 
       {f.en_otra_cuenta && p.estado_verificacion !== 'verificada' && (
         <Alert tone="danger" className="mb-4">
-          Esta póliza ya está verificada en otra cuenta ({f.en_otra_cuenta}). Una cuenta verificada por póliza: recházala o libera la otra.
+          Esta póliza ya está verificada en otra cuenta (
+          <Link to={`/polizas?u=${f.en_otra_cuenta}`} className="font-mono font-semibold underline">
+            {f.en_otra_cuenta}
+          </Link>
+          ). Una cuenta verificada por póliza: recházala aquí, o libera la otra si el titular es esta persona.
         </Alert>
       )}
 
       {p.estado_verificacion === 'verificada' ? (
-        <Alert tone="info">
-          Verificada con nacimiento {p.birth_date_confirmada ? fecha(p.birth_date_confirmada) : '—'}. Una póliza verificada no se rechaza.
-        </Alert>
+        <div className="flex flex-col gap-4">
+          <Alert tone="info">
+            Verificada con nacimiento {p.birth_date_confirmada ? fecha(p.birth_date_confirmada) : '—'}. Una póliza verificada no se rechaza: se libera.
+          </Alert>
+          {p.correcciones.length > 0 && (
+            <div>
+              <div className="mb-2 text-[12px] font-bold tracking-[0.08em] text-text-muted uppercase">Correcciones de la aseguradora</div>
+              <ol className="flex flex-col gap-2">
+                {p.correcciones.map((c) => (
+                  <li key={c.creado_en} className="rounded-inner bg-surface-muted px-3 py-2.5 text-[13px]">
+                    <strong>
+                      {fecha(c.fecha_anterior)} → {fecha(c.fecha_nueva)}
+                    </strong>
+                    , vale desde el {fecha(c.desde)}. <span className="text-text-muted">{c.motivo}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {administrar && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={CalendarCog}
+                onClick={() => {
+                  setFechaNueva('');
+                  setErrorCorreccion(undefined);
+                  setCorregir(true);
+                }}
+              >
+                Corregir fecha de nacimiento
+              </Button>
+              <Button size="sm" variant="secondary" icon={Unlink} onClick={() => setLiberar(true)}>
+                Liberar póliza
+              </Button>
+            </div>
+          )}
+        </div>
       ) : !puedeActuar ? (
         <Alert tone="info">Tu rol solo puede ver pólizas.</Alert>
       ) : (
@@ -229,14 +282,54 @@ function PanelPoliza({ f, onCambio }: { f: FilaPoliza; onCambio: (mensaje: strin
           <option value="" disabled>
             Elige un motivo
           </option>
-          {Object.entries(MOTIVOS_RECHAZO).map(([k, l]) => (
+          {MOTIVOS_PARA_RECHAZAR.map((k) => (
             <option key={k} value={k}>
-              {l}
+              {MOTIVOS_RECHAZO[k]}
             </option>
           ))}
         </SelectField>
         {error && !error.campos && <Alert tone="danger">{error.message}</Alert>}
       </Dialog>
+
+      <MotivoDialog
+        open={liberar}
+        title="Liberar la póliza"
+        description={`${p.policy_number} queda libre para que su titular la vincule en otra cuenta. En esta cuenta deja de canjear y sale de La Liga; sus puntos y sus monedas no se tocan.`}
+        confirmLabel="Liberar"
+        peligro
+        sugerencias={['El titular abrió una cuenta nueva', 'Se verificó en la cuenta equivocada']}
+        onClose={() => setLiberar(false)}
+        onConfirm={async (m) => {
+          await liberarPoliza(f.usuario_id, m);
+          onCambio(`${p.policy_number} liberada: ya se puede verificar en otra cuenta.`, 'success');
+        }}
+      />
+
+      <MotivoDialog
+        open={corregir}
+        title="Corregir la fecha de nacimiento"
+        description="Cuando la aseguradora se equivocó. Vale desde hoy hacia adelante y nunca le quita puntos: lo anterior se sigue calculando con la fecha de entonces."
+        confirmLabel="Guardar la corrección"
+        sugerencias={['La aseguradora corrigió su registro', 'Error al escribirla al verificar']}
+        bloqueado={!fechaNueva}
+        onClose={() => setCorregir(false)}
+        onError={setErrorCorreccion}
+        onConfirm={async (m) => {
+          const c = await corregirNacimiento(f.usuario_id, fechaNueva, m);
+          onCambio(`Fecha corregida: ${fecha(c.fecha_anterior)} → ${fecha(c.fecha_nueva)}, vale desde hoy. Si la fecha nueva le daba más puntos, súmalos con un ajuste en su ledger.`, 'success');
+        }}
+      >
+        <TextField
+          label="Fecha que confirma la aseguradora"
+          type="date"
+          max={HOY}
+          value={fechaNueva}
+          onChange={(e) => setFechaNueva(e.target.value)}
+          error={errorCorreccion?.campos?.fecha_nueva}
+          hint={`Hoy tiene ${p.birth_date_confirmada ? fecha(p.birth_date_confirmada) : '—'}. El veredicto del retroactivo no cambia.`}
+        />
+        <Alert tone="info">Sumar hacia atrás no es automático: se decide caso por caso, con un ajuste en el ledger de la cuenta.</Alert>
+      </MotivoDialog>
     </Card>
   );
 }

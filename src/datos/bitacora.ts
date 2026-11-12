@@ -19,7 +19,18 @@ export type TipoAccion =
   | 'editar_premio'
   | 'marcar_cupon'
   | 'editar_liga'
-  | 'editar_patrocinio';
+  | 'editar_patrocinio'
+  | 'estado_cuenta'
+  | 'cerrar_sesiones'
+  | 'baja_cuenta'
+  | 'liberar_poliza'
+  | 'corregir_nacimiento'
+  | 'restituir_retroactivo'
+  | 'revertir_dia'
+  | 'desbloquear'
+  | 'moderar_liga'
+  | 'editar_comercio'
+  | 'seguridad_panel';
 
 export interface EntradaBitacora {
   id: number;

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buscarCupon, listarCupones, marcarUsado, normalizarCodigo, obtenerEstadisticas } from './cupones';
-import { listarMeses, renombrarMes, validarNombre } from './liga';
+import { listarCiclos, obtenerTabla, renombrarCiclo, validarNombre } from './liga';
 import { validarPatrocinio, type DatosPatrocinio, type Patrocinio } from './patrocinios';
 import { guardarPremio, importarCatalogo, validarPremio, type DatosPremio } from './premios';
 import type { ErrorPanel } from './red';
@@ -93,9 +93,17 @@ describe('patrocinios = Patrocinio.clean() del backend', () => {
     expect(validarPatrocinio({ ...base, desde: '2027-02-02', hasta: '2027-02-08' }, ninguno).desde).toMatch(/lunes a domingo/);
   });
 
-  it('un mes de La Liga va del día 1 al último', () => {
-    expect(validarPatrocinio({ ...base, tipo: 'liga', desde: '2027-02-01', hasta: '2027-02-28' }, ninguno)).toEqual({});
-    expect(validarPatrocinio({ ...base, tipo: 'liga', desde: '2027-02-01', hasta: '2027-02-27' }, ninguno).desde).toMatch(/día 1 al último/);
+  it('un patrocinio de La Liga va de punta a punta de su ciclo', () => {
+    const liga = { ...base, tipo: 'liga' as const };
+    // Temporada 1 de 2027: del lunes 4 ene al domingo 4 abr.
+    expect(validarPatrocinio({ ...liga, desde: '2027-01-04', hasta: '2027-04-04' }, ninguno)).toEqual({});
+    // La transición: la primera temporada cuenta desde el 1 nov 2026.
+    expect(validarPatrocinio({ ...liga, desde: '2026-11-01', hasta: '2027-01-03' }, ninguno)).toEqual({});
+    // Octubre de 2026 fue el último ciclo por mes.
+    expect(validarPatrocinio({ ...liga, desde: '2026-10-01', hasta: '2026-10-31' }, ninguno)).toEqual({});
+    // Ya no se vende un mes suelto.
+    expect(validarPatrocinio({ ...liga, desde: '2027-02-01', hasta: '2027-02-28' }, ninguno).desde).toMatch(/punta a punta/);
+    expect(validarPatrocinio({ ...liga, desde: '2027-01-04', hasta: '2027-03-31' }, ninguno).desde).toMatch(/punta a punta/);
   });
 
   it('semana y liga necesitan el texto del cupón; destacado no', () => {
@@ -114,7 +122,7 @@ describe('patrocinios = Patrocinio.clean() del backend', () => {
   });
 });
 
-describe('La Liga: nombre por mes', () => {
+describe('La Liga: por temporada, con nombre por ciclo', () => {
   beforeEach(comoAdmin);
 
   it('el nombre tiene que caber en el banner', () => {
@@ -122,11 +130,26 @@ describe('La Liga: nombre por mes', () => {
     expect(validarNombre('x'.repeat(41))).toMatch(/Máximo/);
   });
 
-  it('un mes cerrado no se renombra; uno abierto sí', async () => {
-    const meses = await listarMeses();
-    const cerrado = meses.find((m) => m.cerrada_en)!;
-    expect((await error(renombrarMes(cerrado.mes, 'Liga X')))?.message).toMatch(/ya se cerró/);
-    const abierto = meses.find((m) => !m.cerrada_en)!;
-    expect((await renombrarMes(abierto.mes, '  Liga Nike ')).nombre).toBe('Liga Nike');
+  it('un ciclo cerrado no se renombra; uno abierto sí', async () => {
+    const ciclos = await listarCiclos();
+    const cerrado = ciclos.find((m) => m.cerrada_en)!;
+    expect((await error(renombrarCiclo(cerrado.inicio, 'Liga X')))?.message).toMatch(/ya se cerró/);
+    const abierto = ciclos.find((m) => !m.cerrada_en)!;
+    expect((await renombrarCiclo(abierto.inicio, '  Liga Nike ')).nombre).toBe('Liga Nike');
+  });
+
+  it('octubre de 2026 es el único ciclo por mes; después, temporadas', async () => {
+    const ciclos = await listarCiclos();
+    expect(ciclos.filter((c) => c.ciclo === 'mes').map((c) => c.inicio)).toEqual(['2026-10-01']);
+    expect(ciclos.find((c) => c.inicio === '2026-11-01')).toMatchObject({ fin: '2027-01-03', ciclo: 'temporada', cierre: '2027-01-05', pago: '2027-01-12' });
+  });
+
+  it('la tabla va por puntos y desempata por pasos y después por workouts', async () => {
+    const tabla = await obtenerTabla('2026-10-01');
+    for (let i = 1; i < tabla.length; i++) {
+      const [a, b] = [tabla[i - 1]!, tabla[i]!];
+      expect(a.puntos > b.puntos || (a.puntos === b.puntos && (a.pasos > b.pasos || (a.pasos === b.pasos && a.workouts >= b.workouts)))).toBe(true);
+    }
+    expect(tabla.slice(0, 3).map((f) => f.monedas)).toEqual([30, 20, 10]);
   });
 });

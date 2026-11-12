@@ -8,13 +8,18 @@
  *   una fila nueva (tipo ajuste_manual) con motivo y autor.
  * - Verificar exige la fecha de nacimiento confirmada y toma el veredicto
  *   del retroactivo en ese momento (services/polizas.py → verificar).
- * - Una póliza verificada no se rechaza.
+ * - Una póliza verificada no se rechaza: se libera (queda libre para otra
+ *   cuenta) y eso solo lo hace un admin, con motivo.
+ * - Corregir la fecha de nacimiento confirmada vale hacia adelante y nunca
+ *   le quita puntos a nadie (policies.CorreccionDeNacimiento).
+ * - Dar de baja borra lo personal y conserva lo anónimo (cuenta/baja del
+ *   contrato): no se deshace.
  */
 import { pedir } from './api';
 import { registrar } from './bitacora';
 import { conectado } from './modo';
 import { copia, ErrorPanel, hoyGT, simularRed } from './red';
-import { correoActual, puede } from './sesion';
+import { correoActual, puede, type Accion } from './sesion';
 import type { Nivel } from '@/components/ui/Niveles';
 
 /* ================================================================= tipos */
@@ -27,7 +32,23 @@ export const MOTIVOS_RECHAZO: Record<string, string> = {
   poliza_no_vigente: 'La póliza no existe o no está vigente',
   poliza_en_otra_cuenta: 'Ya está verificada en otra cuenta',
   otro: 'Otro motivo',
+  // No se elige al rechazar: lo pone "Liberar póliza".
+  liberada: 'Liberada por el equipo',
 };
+
+/** Los motivos que se pueden elegir al rechazar. */
+export const MOTIVOS_PARA_RECHAZAR = ['datos_no_coinciden', 'poliza_no_vigente', 'poliza_en_otra_cuenta', 'otro'] as const;
+
+/** La aseguradora corrigió su fecha después de verificar. Solo se agregan filas. */
+export interface CorreccionNacimiento {
+  fecha_anterior: string;
+  fecha_nueva: string;
+  /** Desde qué día vale la nueva: lo anterior se sigue calculando con la de entonces. */
+  desde: string;
+  motivo: string;
+  autor: string;
+  creado_en: string;
+}
 
 export interface Poliza {
   policy_number: string;
@@ -43,16 +64,42 @@ export interface Poliza {
   fecha_verificacion: string | null;
   retroactivo: Retroactivo;
   corte_retroactivo: string | null;
+  /** Cuándo el equipo restituyó lo anulado por un retroactivo denegado (fue error, no mentira). */
+  retroactivo_restituido_en: string | null;
+  correcciones: CorreccionNacimiento[];
 }
 
 export interface Usuario {
   usuario_id: string;
   correo: string;
+  /** Si comprobó el correo con el código de 6 dígitos (6 nov 2026). */
+  correo_verificado: boolean;
+  /** Lo que escribió al registrarse. El de la póliza, si hay, va en `poliza`. */
+  nombre: string | null;
+  apellido: string | null;
+  /** Como lo ven en las ligas y con lo que también entra: "ana.lopez", sin "@". null = todavía no lo elige. */
+  nombre_de_miembro: string | null;
+  tiene_foto: boolean;
   /** Fecha que declaró al registrarse. */
   birth_date: string;
   is_active: boolean;
   creado_en: string;
+  /** Si se dio de baja: lo personal ya no existe y la cuenta no se puede cambiar. */
+  dado_de_baja_en: string | null;
   poliza: Poliza | null;
+}
+
+/** users.Consentimiento: compartir los datos del día con la aseguradora. */
+export interface EstadoConsentimiento {
+  obligatorio: boolean;
+  version_vigente: string;
+  /** true solo con la versión vigente aceptada y sin revocar. */
+  aceptado: boolean;
+  version_aceptada: string | null;
+  aceptado_en: string | null;
+  revocado_en: string | null;
+  /** Todas las aceptaciones, la más nueva primero. */
+  historial: Array<{ version: string; aceptado_en: string; revocado_en: string | null }>;
 }
 
 export type TipoLedger = 'pasos' | 'intensidad' | 'chequeo_medico' | 'ajuste_manual' | 'retroactivo_denegado';
@@ -68,7 +115,8 @@ export const NOMBRE_TIPO_LEDGER: Record<TipoLedger, string> = {
 
 export const NOMBRE_TIPO_MONEDA: Record<TipoMoneda, string> = {
   objetivo_cumplido: 'Objetivo cumplido',
-  liga_mensual: 'Liga mensual',
+  // El nombre del tipo viene del backend; hoy La Liga paga por temporada.
+  liga_mensual: 'Podio de La Liga',
   canje: 'Canje',
   expiracion: 'Vencidas (fin de season)',
   ajuste_manual: 'Ajuste manual',
@@ -114,8 +162,16 @@ export interface SoporteSync {
   ultimo_sincronizado_en: string | null;
   app_version: string | null;
   zona_horaria: string | null;
-  /** Ventana de datos rezagados: los últimos 14 días. */
-  ventana: Array<{ fecha: string; con_datos: boolean; pasos: number | null }>;
+  /**
+   * Si el último envío de hoy trajo `pasos_por_hora` (A49): con él, los pasos
+   * son el total de Apple Salud. false = app vieja o la lectura falló.
+   */
+  manda_pasos_por_hora: boolean | null;
+  /**
+   * Ventana de datos rezagados: los últimos 14 días. `cubierto` = el día se
+   * calcula con el total de Salud; si no, con las muestras (regla por bloques).
+   */
+  ventana: Array<{ fecha: string; con_datos: boolean; pasos: number | null; cubierto: boolean }>;
   descartadas: { sesiones_sin_ritmo_cardiaco: number; datos_imposibles: number };
   dispositivos: Dispositivo[];
 }
@@ -124,7 +180,10 @@ export interface SoporteSync {
 export interface FilaUsuario {
   usuario_id: string;
   correo: string;
+  nombre: string;
+  nombre_de_miembro: string | null;
   is_active: boolean;
+  dado_de_baja: boolean;
   estado_poliza: EstadoPoliza;
   motivo_rechazo: string | null;
   policy_number: string | null;
@@ -141,6 +200,9 @@ export interface FichaUsuario {
   nivel: Nivel;
   saldo_monedas: number;
   version_regla_activa: string;
+  /** Sesiones abiertas (tokens de knox vigentes): una por teléfono, 10 como mucho. */
+  sesiones_activas: number;
+  consentimiento: EstadoConsentimiento;
 }
 
 /* ================================================================= reglas */
@@ -148,6 +210,13 @@ export interface FichaUsuario {
 /** Hoy en Guatemala. Los datos de muestra se arman hacia atrás desde aquí. */
 export const HOY = hoyGT();
 export const VERSION_ACTIVA = 'v3';
+/** Un dato atrasado cuenta hasta 14 días después; un día solo se revierte dentro de esa ventana. */
+export const VENTANA_REZAGADOS_DIAS = 14;
+/** Más pasos que esto en un día es atípico (hoy el backend solo lo anota en el log). */
+export const PASOS_DIA_ATIPICO = 60000;
+const VERSION_CONSENTIMIENTO = '1';
+/** La versión de la app que manda `pasos_por_hora`. Las anteriores no. */
+const APP_CON_PASOS_POR_HORA = '1.1.0';
 
 export function nivelDe(puntos: number): Nivel {
   if (puntos >= 15000) return 4;
@@ -251,7 +320,17 @@ interface Semilla {
   diasSinDatos?: number[];
   version?: string;
   activo?: boolean;
-  dispositivos?: Dispositivo[];
+  dispositivos?: (ultimo: string) => Dispositivo[];
+  /** Lo que escribió al registrarse. Si falta, el de la póliza. */
+  nombre?: string;
+  apellido?: string;
+  /** null = todavía no elige su nombre de miembro. Si falta, sale de su nombre. */
+  miembro?: string | null;
+  /** Un día con pasos imposibles, para la lista de días atípicos. */
+  atipico?: { n: number; pasos: number };
+  consentimiento?: 'nunca' | 'revocado';
+  correoSinVerificar?: boolean;
+  sesiones?: number;
 }
 
 const IPHONE = (nombre: string, ultima: string): Dispositivo => ({
@@ -291,6 +370,8 @@ const SEMILLAS: Semilla[] = [
   {
     id: 'u_c7d4',
     correo: 'mariela.ochoa@gmail.com',
+    nombre: 'Mariela',
+    apellido: 'Ochoa',
     nac: '1995-11-20',
     sinSync: 0,
     actividad: 0.5,
@@ -310,6 +391,7 @@ const SEMILLAS: Semilla[] = [
     poliza: { policy_number: 'GT-114-70412', nombre: 'Lucía', apellido: 'Herrera', estado_verificacion: 'rechazada', motivo_rechazo: 'datos_no_coinciden' },
     sinSync: 2,
     actividad: 0.4,
+    consentimiento: 'revocado',
   },
   {
     id: 'u_d118',
@@ -337,6 +419,8 @@ const SEMILLAS: Semilla[] = [
     actividad: 0.3,
     diasSinDatos: [0, 1, 2, 3, 4, 5],
     version: '1.0.2',
+    // Cuenta de antes del 7 nov: todavía no elige su nombre de miembro.
+    miembro: null,
   },
   {
     id: 'u_e5d9',
@@ -345,13 +429,20 @@ const SEMILLAS: Semilla[] = [
     poliza: { policy_number: 'GT-207-22561', nombre: 'Ana', apellido: 'Gálvez', estado_verificacion: 'pendiente', birth_date_confirmada: '1974-04-18' },
     sinSync: 0,
     actividad: 0.65,
+    atipico: { n: 4, pasos: 71480 },
   },
   {
     id: 'u_0a71',
     correo: 'pablo.ruiz@gmail.com',
+    nombre: 'Pablo',
+    apellido: 'Ruiz',
+    miembro: null,
     nac: '2001-09-09',
     sinSync: null,
     actividad: 0,
+    consentimiento: 'nunca',
+    correoSinVerificar: true,
+    sesiones: 0,
   },
   {
     id: 'u_b2f8',
@@ -361,6 +452,7 @@ const SEMILLAS: Semilla[] = [
     sinSync: 3,
     actividad: 0.55,
     diasSinDatos: [3, 4, 9],
+    sesiones: 3,
   },
   {
     id: 'u_6c40',
@@ -370,6 +462,9 @@ const SEMILLAS: Semilla[] = [
     sinSync: 1,
     actividad: 0.7,
     activo: true,
+    // Pide la póliza de Andrea y manda los datos del iPhone de Andrea: para Antifraude.
+    dispositivos: (ultimo) => [IPHONE('iPhone de Andrea', ultimo)],
+    atipico: { n: 2, pasos: 63900 },
   },
 ];
 
@@ -378,6 +473,18 @@ interface Registro {
   puntos: FilaLedger[];
   monedas: FilaMonedas[];
   sync: SoporteSync;
+  sesiones: number;
+  consentimientos: EstadoConsentimiento['historial'];
+  atipicos: Array<{ fecha: string; pasos: number }>;
+}
+
+const sinTildes = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+/** "José Luis" + "Pérez" → "jose.perez", como lo propone la app. */
+function miembroDe(nombre: string | null, apellido: string | null): string | null {
+  if (!nombre) return null;
+  const partes = [nombre.trim().split(/\s+/)[0]!, ...(apellido ? [apellido.trim().split(/\s+/).pop()!] : [])];
+  return sinTildes(partes.join('.')).toLowerCase().replace(/[^a-z0-9._]/g, '').slice(0, 20);
 }
 
 let siguienteFila = 1;
@@ -389,12 +496,18 @@ function construir(s: Semilla): Registro {
   const ventana: SoporteSync['ventana'] = [];
   const sinDatos = new Set(s.diasSinDatos ?? []);
   const nunca = s.sinSync === null;
+  const atipicos: Registro['atipicos'] = [];
+  const appNueva = (s.version ?? APP_CON_PASOS_POR_HORA) >= APP_CON_PASOS_POR_HORA;
 
   for (let n = 59; n >= 1; n--) {
     const f = diasAtras(n);
-    const hayDatos = !nunca && !sinDatos.has(n) && r() < 0.92;
-    const pasos = hayDatos ? Math.round(2500 + r() * 15000 * s.actividad + 3000 * s.actividad) : null;
-    if (n <= 14) ventana.unshift({ fecha: f, con_datos: hayDatos, pasos });
+    const esAtipico = s.atipico?.n === n;
+    const hayDatos = (!nunca && !sinDatos.has(n) && r() < 0.92) || esAtipico;
+    const normales = hayDatos ? Math.round(2500 + r() * 15000 * s.actividad + 3000 * s.actividad) : null;
+    const pasos = esAtipico ? s.atipico!.pasos : normales;
+    if (pasos !== null && pasos > PASOS_DIA_ATIPICO) atipicos.push({ fecha: f, pasos });
+    // Un día queda cubierto por el total de Salud solo con la app que manda pasos_por_hora.
+    if (n <= 14) ventana.unshift({ fecha: f, con_datos: hayDatos, pasos, cubierto: hayDatos && appNueva });
     if (!hayDatos || pasos === null) continue;
     const bono = edad(s.nac, f) >= 60 ? 25 : 0;
     const pp = tramoPasos(pasos) + (tramoPasos(pasos) > 0 ? bono : 0);
@@ -418,11 +531,14 @@ function construir(s: Semilla): Registro {
       monedas.push({ id: siguienteFila++, fecha: f, tipo: 'objetivo_cumplido', cantidad: ganadas, fecha_expiracion: '2027-01-03', creado_en: `${f}T00:03:00-06:00` });
   }
   if (!nunca && s.actividad > 0.6)
-    monedas.push({ id: siguienteFila++, fecha: '2026-10-09', tipo: 'liga_mensual', cantidad: 20, fecha_expiracion: '2027-01-03', creado_en: '2026-10-09T00:05:00-06:00' });
+    monedas.push({ id: siguienteFila++, fecha: '2026-11-09', tipo: 'liga_mensual', cantidad: 20, fecha_expiracion: '2027-01-03', creado_en: '2026-11-09T00:05:00-06:00' });
 
   const ultimo = s.sinSync === null ? null : `${diasAtras(s.sinSync)}T${s.sinSync === 0 ? '07:42' : '20:15'}:00-06:00`;
-  const nombre = s.poliza?.nombre ?? s.correo.split('@')[0]!;
-  const dispositivos = s.dispositivos ?? (ultimo === null ? [] : s.actividad > 0.6 ? [IPHONE(`iPhone de ${nombre}`, ultimo), WATCH(`Apple Watch de ${nombre}`, ultimo)] : [IPHONE(`iPhone de ${nombre}`, ultimo)]);
+  const nombreReg = s.nombre ?? s.poliza?.nombre ?? null;
+  const apellidoReg = s.apellido ?? s.poliza?.apellido ?? null;
+  const nombre = nombreReg ?? s.correo.split('@')[0]!;
+  const dispositivos =
+    ultimo === null ? [] : s.dispositivos ? s.dispositivos(ultimo) : s.actividad > 0.6 ? [IPHONE(`iPhone de ${nombre}`, ultimo), WATCH(`Apple Watch de ${nombre}`, ultimo)] : [IPHONE(`iPhone de ${nombre}`, ultimo)];
 
   const poliza: Poliza | null = s.poliza
     ? {
@@ -438,22 +554,47 @@ function construir(s: Semilla): Registro {
         fecha_verificacion: null,
         retroactivo: '',
         corte_retroactivo: null,
+        retroactivo_restituido_en: null,
+        correcciones: [],
         ...s.poliza,
       }
     : null;
 
+  const creado = '2026-09-28T12:00:00-06:00';
+  const consentimientos: Registro['consentimientos'] =
+    s.consentimiento === 'nunca'
+      ? []
+      : [{ version: VERSION_CONSENTIMIENTO, aceptado_en: '2026-09-28T12:05:00-06:00', revocado_en: s.consentimiento === 'revocado' ? `${diasAtras(6)}T18:02:00-06:00` : null }];
+
   const reg: Registro = {
-    usuario: { usuario_id: s.id, correo: s.correo, birth_date: s.nac, is_active: s.activo ?? true, creado_en: '2026-09-28T12:00:00-06:00', poliza },
+    usuario: {
+      usuario_id: s.id,
+      correo: s.correo,
+      correo_verificado: !s.correoSinVerificar,
+      nombre: nombreReg,
+      apellido: apellidoReg,
+      nombre_de_miembro: s.miembro === undefined ? miembroDe(nombreReg, apellidoReg) : s.miembro,
+      tiene_foto: s.actividad > 0.75,
+      birth_date: s.nac,
+      is_active: s.activo ?? true,
+      creado_en: creado,
+      dado_de_baja_en: null,
+      poliza,
+    },
     puntos,
     monedas,
     sync: {
       ultimo_sincronizado_en: ultimo,
-      app_version: ultimo === null ? null : (s.version ?? '1.1.0'),
+      app_version: ultimo === null ? null : (s.version ?? APP_CON_PASOS_POR_HORA),
       zona_horaria: ultimo === null ? null : 'America/Guatemala',
+      manda_pasos_por_hora: ultimo === null ? null : appNueva,
       ventana,
       descartadas: { sesiones_sin_ritmo_cardiaco: nunca ? 0 : Math.floor(r() * 4), datos_imposibles: nunca ? 0 : r() < 0.2 ? 1 : 0 },
       dispositivos,
     },
+    sesiones: s.sesiones ?? (nunca ? 0 : s.actividad > 0.75 ? 2 : 1),
+    consentimientos,
+    atipicos,
   };
 
   if (poliza?.retroactivo === 'denegado' && poliza.corte_retroactivo) anularAntesDe(reg, poliza.corte_retroactivo, `${poliza.corte_retroactivo}T11:30:00-06:00`);
@@ -493,6 +634,7 @@ function anularAntesDe(reg: Registro, corte: string, cuando: string): { dias: nu
   const restante = Math.max(0, ganadasAntes - gastadas);
   if (restante > 0) {
     reg.monedas.push({ id: siguienteFila++, fecha: corte, tipo: 'ajuste_manual', cantidad: -restante, fecha_expiracion: null, creado_en: cuando, motivo: 'Retroactivo denegado', autor: 'sistema' });
+    // (el mismo texto que MOTIVO_ANULACION: así se encuentra lo anulado)
   }
   return { dias, puntos: total, monedas: restante };
 }
@@ -523,7 +665,10 @@ function fila(r: Registro): FilaUsuario {
   return {
     usuario_id: r.usuario.usuario_id,
     correo: r.usuario.correo,
+    nombre: nombreDe(r.usuario),
+    nombre_de_miembro: r.usuario.nombre_de_miembro,
     is_active: r.usuario.is_active,
+    dado_de_baja: r.usuario.dado_de_baja_en !== null,
     estado_poliza: estadoDe(r.usuario),
     motivo_rechazo: r.usuario.poliza?.motivo_rechazo ?? null,
     policy_number: r.usuario.poliza?.policy_number ?? null,
@@ -534,25 +679,94 @@ function fila(r: Registro): FilaUsuario {
   };
 }
 
+/**
+ * Cómo llamar a la persona en el panel: el nombre de la aseguradora si hay
+ * póliza, si no el que escribió al registrarse, y si no su nombre de miembro.
+ */
 function nombreDe(u: Usuario): string {
+  if (u.dado_de_baja_en) return 'Cuenta dada de baja';
   const p = u.poliza;
-  return p?.nombre ? `${p.nombre} ${p.apellido ?? ''}`.trim() : u.correo.split('@')[0]!;
+  if (p?.nombre) return `${p.nombre} ${p.apellido ?? ''}`.trim();
+  if (u.nombre) return `${u.nombre} ${u.apellido ?? ''}`.trim();
+  return u.nombre_de_miembro ?? u.correo.split('@')[0]!;
 }
 
 export { nombreDe };
+
+function consentimientoDe(r: Registro): EstadoConsentimiento {
+  const ultimo = r.consentimientos[r.consentimientos.length - 1] ?? null;
+  return {
+    obligatorio: false,
+    version_vigente: VERSION_CONSENTIMIENTO,
+    aceptado: !!ultimo && ultimo.version === VERSION_CONSENTIMIENTO && !ultimo.revocado_en,
+    version_aceptada: ultimo?.version ?? null,
+    aceptado_en: ultimo?.aceptado_en ?? null,
+    revocado_en: ultimo?.revocado_en ?? null,
+    historial: [...r.consentimientos].reverse(),
+  };
+}
+
+/* ----------------------------------------------------------------- reglas comunes de las acciones */
+
+function exigir(accion: Accion, texto: string): void {
+  if (!puede(accion)) throw new ErrorPanel(texto);
+}
+
+function motivoValido(motivo: string): string {
+  const m = motivo.trim();
+  if (m.length < 5) throw new ErrorPanel('Falta el motivo.', { motivo: 'Escribe el motivo: queda en la bitácora.' });
+  return m;
+}
+
+/** Una cuenta dada de baja ya no se cambia: lo personal no existe. */
+function sinBaja(r: Registro): void {
+  if (r.usuario.dado_de_baja_en) throw new ErrorPanel('Esta cuenta se dio de baja: ya no se puede cambiar.');
+}
+
+/* ----------------------------------------------------------------- para los otros mocks */
+
+export interface CuentaDeMuestra {
+  usuario_id: string;
+  nombre: string;
+  nombre_de_miembro: string | null;
+  estado_poliza: EstadoPoliza;
+  policy_number: string | null;
+  retroactivo: Retroactivo;
+  retroactivo_restituido: boolean;
+  dado_de_baja: boolean;
+  atipicos: Array<{ fecha: string; pasos: number; puntos_dia: number }>;
+  dispositivos: Dispositivo[];
+}
+
+/** Para antifraude.ts y tusLigas.ts (mock): las cuentas de muestra, como están ahora. */
+export function cuentasDeMuestra(): CuentaDeMuestra[] {
+  return registros.map((r) => ({
+    usuario_id: r.usuario.usuario_id,
+    nombre: nombreDe(r.usuario),
+    nombre_de_miembro: r.usuario.nombre_de_miembro,
+    estado_poliza: estadoDe(r.usuario),
+    policy_number: r.usuario.poliza?.policy_number ?? null,
+    retroactivo: r.usuario.poliza?.retroactivo ?? '',
+    retroactivo_restituido: !!r.usuario.poliza?.retroactivo_restituido_en,
+    dado_de_baja: r.usuario.dado_de_baja_en !== null,
+    atipicos: r.atipicos.map((a) => ({ ...a, puntos_dia: r.puntos.filter((f) => f.fecha === a.fecha).reduce((s, f) => s + f.puntos, 0) })),
+    dispositivos: r.sync.dispositivos,
+  }));
+}
 
 /* ================================================================= usuarios */
 
 export function listarUsuarios(filtro: { q?: string; estado?: EstadoPoliza | 'todos' }): Promise<FilaUsuario[]> {
   if (conectado('usuarios')) return pedir<FilaUsuario[]>('/api/v1/admin/usuarios', { query: { q: filtro.q, estado: filtro.estado === 'todos' ? undefined : filtro.estado } });
   return simularRed(() => {
-    const q = (filtro.q ?? '').trim().toLowerCase();
+    // "@ana.lopez" y "ana.lopez" buscan lo mismo.
+    const q = (filtro.q ?? '').trim().toLowerCase().replace(/^@/, '');
     return registros
       .filter((r) => !filtro.estado || filtro.estado === 'todos' || estadoDe(r.usuario) === filtro.estado)
       .filter((r) => {
         if (!q) return true;
         const u = r.usuario;
-        return [u.usuario_id, u.correo, u.poliza?.policy_number ?? '', nombreDe(u)].some((v) => v.toLowerCase().includes(q));
+        return [u.usuario_id, u.correo, u.nombre_de_miembro ?? '', u.poliza?.policy_number ?? '', nombreDe(u)].some((v) => v.toLowerCase().includes(q));
       })
       .map(fila);
   });
@@ -572,8 +786,88 @@ export function obtenerFicha(usuario_id: string): Promise<FichaUsuario> {
   return simularRed(() => {
     const r = buscar(usuario_id);
     const p = puntosAnio(r);
-    return copia({ usuario: r.usuario, estado_poliza: estadoDe(r.usuario), puntos_anio: p, nivel: nivelDe(p), saldo_monedas: saldo(r), version_regla_activa: VERSION_ACTIVA });
+    return copia({
+      usuario: r.usuario,
+      estado_poliza: estadoDe(r.usuario),
+      puntos_anio: p,
+      nivel: nivelDe(p),
+      saldo_monedas: saldo(r),
+      version_regla_activa: VERSION_ACTIVA,
+      sesiones_activas: r.sesiones,
+      consentimiento: consentimientoDe(r),
+    });
   });
+}
+
+/* ================================================================= acciones sobre la cuenta */
+
+/**
+ * Desactiva o reactiva una cuenta. Desactivada no entra ni suma (is_active),
+ * y se le cierran las sesiones. No borra nada: para eso está la baja.
+ */
+export function cambiarEstadoCuenta(usuario_id: string, activa: boolean, motivo: string): Promise<void> {
+  if (conectado('usuarios')) return pedir<void>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}`, { metodo: 'PATCH', cuerpo: { is_active: activa, motivo } });
+  return simularRed(() => {
+    exigir('administrar_cuenta', 'Tu rol no puede desactivar cuentas.');
+    const r = buscar(usuario_id);
+    sinBaja(r);
+    const m = motivoValido(motivo);
+    if (r.usuario.is_active === activa) throw new ErrorPanel(activa ? 'La cuenta ya está activa.' : 'La cuenta ya está desactivada.');
+    r.usuario.is_active = activa;
+    if (!activa) r.sesiones = 0;
+    registrar('estado_cuenta', usuario_id, `${activa ? 'Reactivada' : 'Desactivada'} · ${m}`);
+  }, 500);
+}
+
+/**
+ * Cierra todas las sesiones de la cuenta (lo mismo que su `logout/todos`), por
+ * ejemplo si perdió el teléfono. Tiene que volver a entrar; no pierde datos.
+ */
+export function cerrarSesiones(usuario_id: string): Promise<{ cerradas: number }> {
+  if (conectado('usuarios')) return pedir<{ cerradas: number }>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}/cerrar-sesiones`, { metodo: 'POST' });
+  return simularRed(() => {
+    exigir('atender_cuenta', 'Tu rol no puede cerrar sesiones.');
+    const r = buscar(usuario_id);
+    sinBaja(r);
+    const cerradas = r.sesiones;
+    r.sesiones = 0;
+    registrar('cerrar_sesiones', usuario_id, cerradas === 1 ? '1 sesión cerrada' : `${cerradas} sesiones cerradas`);
+    return { cerradas };
+  }, 500);
+}
+
+/**
+ * Baja de cuenta a pedido. Lo mismo que hace `POST /api/v1/cuenta/baja` desde
+ * la app: borra lo personal (correo, nombre, nombre de miembro, foto, póliza,
+ * nombres de dispositivo; de la fecha de nacimiento queda solo el año),
+ * revoca el consentimiento y cierra las sesiones. Conserva lo anónimo: los
+ * ledgers, los resúmenes y los cupones. No se deshace.
+ */
+export function darDeBaja(usuario_id: string, motivo: string): Promise<void> {
+  if (conectado('usuarios')) return pedir<void>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}/baja`, { cuerpo: { motivo } });
+  return simularRed(() => {
+    exigir('administrar_cuenta', 'Tu rol no puede dar de baja cuentas.');
+    const r = buscar(usuario_id);
+    sinBaja(r);
+    const m = motivoValido(motivo);
+    const u = r.usuario;
+    const ahora = new Date().toISOString();
+    u.correo = `baja-${u.usuario_id}`;
+    u.correo_verificado = false;
+    u.nombre = null;
+    u.apellido = null;
+    u.nombre_de_miembro = null;
+    u.tiene_foto = false;
+    u.birth_date = `${u.birth_date.slice(0, 4)}-01-01`;
+    u.is_active = false;
+    u.poliza = null;
+    u.dado_de_baja_en = ahora;
+    r.sesiones = 0;
+    for (const c of r.consentimientos) c.revocado_en ??= ahora;
+    for (const d of r.sync.dispositivos) d.nombre = 'Sin nombre';
+    // El detalle no lleva nada personal: la bitácora no se borra.
+    registrar('baja_cuenta', usuario_id, `Baja a pedido · ${m}`);
+  }, 700);
 }
 
 /** Ledger de puntos, más nuevo primero. Solo lectura. */
@@ -591,6 +885,32 @@ export function listarLedgerMonedas(usuario_id: string): Promise<FilaMonedas[]> 
 export function obtenerSync(usuario_id: string): Promise<SoporteSync> {
   if (conectado('usuarios')) return pedir<SoporteSync>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}/sync`);
   return simularRed(() => copia(buscar(usuario_id).sync));
+}
+
+/**
+ * Revierte los puntos de un día con una fila de ajuste de signo contrario.
+ * Solo dentro de la ventana de datos rezagados (14 días): después el día ya
+ * pudo entrar a un ciclo cerrado. El día queda en 0; sus muestras no se tocan.
+ */
+export function revertirDia(usuario_id: string, fecha: string, motivo: string): Promise<{ puntos: number }> {
+  if (conectado('usuarios')) return pedir<{ puntos: number }>(`/api/v1/admin/usuarios/${encodeURIComponent(usuario_id)}/revertir-dia`, { cuerpo: { fecha, motivo } });
+  return simularRed(() => {
+    exigir('ajustar_ledger', 'Tu rol no puede revertir puntos.');
+    const r = buscar(usuario_id);
+    sinBaja(r);
+    const campos: Record<string, string> = {};
+    if (!fecha) campos.fecha = 'Elige el día.';
+    else if (fecha > HOY) campos.fecha = 'No puede ser un día futuro.';
+    else if (fecha < diasAtras(VENTANA_REZAGADOS_DIAS)) campos.fecha = `Solo se revierte un día de los últimos ${VENTANA_REZAGADOS_DIAS}.`;
+    if (motivo.trim().length < 5) campos.motivo = 'Escribe el motivo: queda en la fila y en la bitácora.';
+    const delDia = r.puntos.filter((f) => f.fecha === fecha).reduce((s, f) => s + f.puntos, 0);
+    if (!campos.fecha && delDia <= 0) campos.fecha = 'Ese día no tiene puntos acreditados.';
+    if (Object.keys(campos).length) throw new ErrorPanel('Revisa los campos marcados.', campos);
+    const m = motivo.trim();
+    r.puntos.push({ id: siguienteFila++, fecha, tipo: 'ajuste_manual', puntos: -delDia, puntos_pasos: null, puntos_intensidad: null, tope_diario_aplicado: null, version_regla: VERSION_ACTIVA, creado_en: new Date().toISOString(), motivo: `Día revertido: ${m}`, autor: correoActual() });
+    registrar('revertir_dia', usuario_id, `−${delDia} pts del ${fecha} · ${m}`);
+    return { puntos: delDia };
+  }, 500);
 }
 
 export interface NuevoAjuste {
@@ -738,6 +1058,54 @@ export function rechazarPoliza(usuario_id: string, motivo: string): Promise<void
   }, 500);
 }
 
+/**
+ * Libera una póliza verificada para que su titular la vincule en otra cuenta
+ * (una sola cuenta verificada por póliza). En esta cuenta queda como
+ * rechazada con el motivo `liberada`: deja de canjear y sale de La Liga. No
+ * toca los ledgers.
+ */
+export function liberarPoliza(usuario_id: string, motivo: string): Promise<void> {
+  if (conectado('polizas')) return pedir<void>(`/api/v1/admin/polizas/${encodeURIComponent(usuario_id)}/liberar`, { cuerpo: { motivo } });
+  return simularRed(() => {
+    exigir('administrar_cuenta', 'Tu rol no puede liberar pólizas.');
+    const r = buscar(usuario_id);
+    const p = r.usuario.poliza;
+    if (!p) throw new ErrorPanel('Esta cuenta no tiene póliza.');
+    if (p.estado_verificacion !== 'verificada') throw new ErrorPanel('Solo se libera una póliza verificada.');
+    const m = motivoValido(motivo);
+    p.estado_verificacion = 'rechazada';
+    p.motivo_rechazo = 'liberada';
+    registrar('liberar_poliza', usuario_id, `${p.policy_number} liberada · ${m}`);
+  }, 500);
+}
+
+/**
+ * La aseguradora corrigió su fecha después de verificar. Vale hacia adelante
+ * (desde hoy) y nunca le quita puntos a la persona; el veredicto del
+ * retroactivo no cambia. Sumar hacia atrás, si la fecha corregida le daba
+ * más, es aparte: un ajuste en su ledger, caso por caso.
+ */
+export function corregirNacimiento(usuario_id: string, fecha_nueva: string, motivo: string): Promise<CorreccionNacimiento> {
+  if (conectado('polizas')) return pedir<CorreccionNacimiento>(`/api/v1/admin/polizas/${encodeURIComponent(usuario_id)}/corregir-nacimiento`, { cuerpo: { fecha_nueva, motivo } });
+  return simularRed(() => {
+    exigir('administrar_cuenta', 'Tu rol no puede corregir la fecha de nacimiento.');
+    const r = buscar(usuario_id);
+    const p = r.usuario.poliza;
+    if (!p || p.estado_verificacion !== 'verificada' || !p.birth_date_confirmada) throw new ErrorPanel('Solo se corrige la fecha de una póliza verificada.');
+    const campos: Record<string, string> = {};
+    if (!fecha_nueva) campos.fecha_nueva = 'Escribe la fecha que confirmó la aseguradora.';
+    else if (fecha_nueva > HOY) campos.fecha_nueva = 'No puede ser una fecha futura.';
+    else if (fecha_nueva === p.birth_date_confirmada) campos.fecha_nueva = 'Es la misma fecha que ya tiene.';
+    if (motivo.trim().length < 5) campos.motivo = 'Escribe el motivo: queda en la bitácora.';
+    if (Object.keys(campos).length) throw new ErrorPanel('Revisa los campos marcados.', campos);
+    const c: CorreccionNacimiento = { fecha_anterior: p.birth_date_confirmada, fecha_nueva, desde: HOY, motivo: motivo.trim(), autor: correoActual(), creado_en: new Date().toISOString() };
+    p.correcciones.push(c);
+    p.birth_date_confirmada = fecha_nueva;
+    registrar('corregir_nacimiento', usuario_id, `${p.policy_number}: ${c.fecha_anterior} → ${fecha_nueva}, vale desde ${HOY} · ${c.motivo}`);
+    return copia(c);
+  }, 500);
+}
+
 /* ================================================================= retroactivo */
 
 export interface CasoRetroactivo {
@@ -750,9 +1118,50 @@ export interface CasoRetroactivo {
   dias: Array<{ fecha: string; puntos: number }>;
   puntos_anulados: number;
   monedas_anuladas: number;
+  /** Si ya se restituyó (fue un error, no una mentira). */
+  restituido_en: string | null;
 }
 
-/** Cuentas con el retroactivo denegado y lo que se anuló. Solo lectura. */
+export interface ResultadoRestitucion {
+  dias: number;
+  puntos: number;
+  monedas: number;
+}
+
+const MOTIVO_ANULACION = 'Retroactivo denegado';
+
+/**
+ * Restituye lo anulado por un retroactivo denegado cuando, al revisarlo, fue
+ * un error y no una mentira. Una fila de ajuste positiva por cada día anulado
+ * y otra con las monedas: lo anulado no se borra. El veredicto queda como
+ * estaba (no se recalcula), con la fecha de la restitución.
+ */
+export function restituirRetroactivo(usuario_id: string, motivo: string): Promise<ResultadoRestitucion> {
+  if (conectado('retroactivo')) return pedir<ResultadoRestitucion>(`/api/v1/admin/retroactivo/${encodeURIComponent(usuario_id)}/restituir`, { cuerpo: { motivo } });
+  return simularRed(() => {
+    exigir('administrar_cuenta', 'Tu rol no puede restituir un retroactivo.');
+    const r = buscar(usuario_id);
+    const p = r.usuario.poliza;
+    if (!p || p.retroactivo !== 'denegado') throw new ErrorPanel('Esta cuenta no tiene el retroactivo denegado.');
+    if (p.retroactivo_restituido_en) throw new ErrorPanel('Este retroactivo ya se restituyó.');
+    const m = motivoValido(motivo);
+    const ahora = new Date().toISOString();
+    const autor = correoActual();
+    const anuladas = r.puntos.filter((f) => f.tipo === 'retroactivo_denegado');
+    let puntos = 0;
+    for (const f of anuladas) {
+      r.puntos.push({ id: siguienteFila++, fecha: f.fecha, tipo: 'ajuste_manual', puntos: -f.puntos, puntos_pasos: null, puntos_intensidad: null, tope_diario_aplicado: null, version_regla: f.version_regla, creado_en: ahora, motivo: `Restitución del retroactivo: ${m}`, autor });
+      puntos += -f.puntos;
+    }
+    const monedas = -r.monedas.filter((x) => x.motivo === MOTIVO_ANULACION).reduce((s, x) => s + x.cantidad, 0);
+    if (monedas > 0) r.monedas.push({ id: siguienteFila++, fecha: HOY, tipo: 'ajuste_manual', cantidad: monedas, fecha_expiracion: '2027-01-03', creado_en: ahora, motivo: `Restitución del retroactivo: ${m}`, autor });
+    p.retroactivo_restituido_en = ahora;
+    registrar('restituir_retroactivo', usuario_id, `${anuladas.length} días, ${puntos} pts y ${monedas} monedas restituidos · ${m}`);
+    return { dias: anuladas.length, puntos, monedas };
+  }, 700);
+}
+
+/** Cuentas con el retroactivo denegado y lo que se anuló. */
 export function listarRetroactivoDenegado(): Promise<CasoRetroactivo[]> {
   if (conectado('retroactivo')) return pedir<CasoRetroactivo[]>('/api/v1/admin/retroactivo');
   return simularRed(() =>
@@ -764,7 +1173,7 @@ export function listarRetroactivoDenegado(): Promise<CasoRetroactivo[]> {
           .filter((f) => f.tipo === 'retroactivo_denegado')
           .map((f) => ({ fecha: f.fecha, puntos: -f.puntos }))
           .sort((a, b) => b.fecha.localeCompare(a.fecha));
-        const monedas = -r.monedas.filter((m) => m.motivo === 'Retroactivo denegado').reduce((s, m) => s + m.cantidad, 0);
+        const monedas = -r.monedas.filter((m) => m.motivo === MOTIVO_ANULACION).reduce((s, m) => s + m.cantidad, 0);
         return {
           usuario_id: r.usuario.usuario_id,
           nombre: nombreDe(r.usuario),
@@ -775,6 +1184,7 @@ export function listarRetroactivoDenegado(): Promise<CasoRetroactivo[]> {
           dias,
           puntos_anulados: dias.reduce((s, d) => s + d.puntos, 0),
           monedas_anuladas: monedas,
+          restituido_en: p.retroactivo_restituido_en,
         };
       }),
   );

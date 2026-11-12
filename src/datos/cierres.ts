@@ -4,8 +4,10 @@
  * Cómo corre en el backend (services/programador.py, hora de Guatemala):
  *   martes 00:00 → cierre: fija el resultado de la semana y paga las monedas
  *   martes 12:00 → corrección: actualiza acumulados, no paga ni reabre
- *   día 2, 00:00 → liga: cierra La Liga del mes anterior
- *   día 9, 00:00 → pago_liga: paga el podio del mes cerrado
+ *   martes de la temporada nueva, 00:00 → liga: cierra La Liga de la temporada
+ *   el martes siguiente, 00:00 → pago_liga: paga el podio
+ *   (los dos van con el cierre semanal de esa hora; octubre de 2026, el último
+ *   ciclo por mes, cerró el 2 nov y pagó el 9 nov)
  * Si una corrida falla, se reintenta cada 5 min hasta 12 veces. Los cierres
  * corren de a uno (candado de PostgreSQL): uno manual con otro en curso sale
  * con "Hay otro cierre en curso".
@@ -18,6 +20,7 @@ import { conectado } from './modo';
 import { cerrarSemanasPendientes } from './objetivos';
 import { copia, ErrorPanel, hoyGT, simularRed } from './red';
 import { correoActual, puede } from './sesion';
+import { cicloDeLiga, nombreCiclo, sumarDias, type CicloLiga } from './temporadas';
 
 export type TipoCorrida = 'cierre' | 'correccion' | 'liga' | 'pago_liga';
 export type EstadoCorrida = 'ok' | 'fallo' | 'en_curso';
@@ -32,8 +35,8 @@ export const NOMBRE_CORRIDA: Record<TipoCorrida, string> = {
 export const CUANDO_CORRE: Record<TipoCorrida, string> = {
   cierre: 'Martes 00:00',
   correccion: 'Martes 12:00',
-  liga: 'Día 2, 00:00',
-  pago_liga: 'Día 9, 00:00',
+  liga: 'Martes de la temporada nueva, 00:00',
+  pago_liga: 'El martes siguiente, 00:00',
 };
 
 export const MAX_INTENTOS = 12;
@@ -58,7 +61,8 @@ export interface EstadoProgramador {
   /** El último latido del proceso. Si pasa mucho sin latir, el servicio está caído. */
   ultimo_latido: string;
   corridas: Corrida[];
-  proximas: Array<{ tipo: TipoCorrida; cuando: string }>;
+  /** `detalle`: de qué ciclo de La Liga es ("Temporada 4 · 2026"). */
+  proximas: Array<{ tipo: TipoCorrida; cuando: string; detalle?: string }>;
   hay_cierre_en_curso: boolean;
 }
 
@@ -137,13 +141,13 @@ const corridas: Corrida[] = [];
     {
       id: siguienteId++,
       tipo: 'pago_liga',
-      programada_para: iso('2026-10-09', '00:00'),
-      empezo: iso('2026-10-09', '00:00'),
-      termino: iso('2026-10-09', '00:00'),
+      programada_para: iso('2026-11-09', '00:00'),
+      empezo: iso('2026-11-09', '00:00'),
+      termino: iso('2026-11-09', '00:00'),
       estado: 'ok',
       intentos: 1,
       error: null,
-      resumen: 'La Liga de septiembre: 30 + 20 + 10 monedas pagadas al podio',
+      resumen: 'La Liga de octubre: 30 + 20 + 10 monedas pagadas al podio',
       origen: 'programador',
     },
   );
@@ -151,24 +155,25 @@ const corridas: Corrida[] = [];
 
 let enCurso: Corrida | null = null;
 
+/** El ciclo de La Liga de hoy y el anterior: uno de los dos tiene el próximo cierre o pago. */
+function ciclosCercanos(): CicloLiga[] {
+  const actual = cicloDeLiga(HOY);
+  const anterior = actual ? cicloDeLiga(sumarDias(actual.inicio, -1)) : null;
+  return [anterior, actual].filter((c): c is CicloLiga => c !== null);
+}
+
 function proximas(): EstadoProgramador['proximas'] {
   const ahora = new Date();
-  const candidatas: Array<{ tipo: TipoCorrida; cuando: string }> = [];
-  for (let i = 0; i <= 14; i++) {
+  const candidatas: EstadoProgramador['proximas'] = [];
+  for (let i = 0; i <= 7; i++) {
     const f = sumar(HOY, i);
-    const dia = new Date(`${f}T12:00:00Z`);
-    if (dia.getUTCDay() === 2) {
+    if (new Date(`${f}T12:00:00Z`).getUTCDay() === 2) {
       candidatas.push({ tipo: 'cierre', cuando: iso(f, '00:00') }, { tipo: 'correccion', cuando: iso(f, '12:00') });
     }
-    if (dia.getUTCDate() === 2) candidatas.push({ tipo: 'liga', cuando: iso(f, '00:00') });
-    if (dia.getUTCDate() === 9) candidatas.push({ tipo: 'pago_liga', cuando: iso(f, '00:00') });
   }
-  // Las de los próximos 40 días, para que siempre salgan las cuatro.
-  for (let i = 15; i <= 40; i++) {
-    const f = sumar(HOY, i);
-    const d = new Date(`${f}T12:00:00Z`).getUTCDate();
-    if (d === 2) candidatas.push({ tipo: 'liga', cuando: iso(f, '00:00') });
-    if (d === 9) candidatas.push({ tipo: 'pago_liga', cuando: iso(f, '00:00') });
+  // La Liga se cierra y se paga por ciclo (la temporada), no en un día fijo del mes.
+  for (const c of ciclosCercanos()) {
+    candidatas.push({ tipo: 'liga', cuando: iso(c.cierre, '00:00'), detalle: nombreCiclo(c) }, { tipo: 'pago_liga', cuando: iso(c.pago, '00:00'), detalle: nombreCiclo(c) });
   }
   const futuras = candidatas.filter((c) => new Date(c.cuando) > ahora).sort((a, b) => a.cuando.localeCompare(b.cuando));
   const vistas = new Set<TipoCorrida>();

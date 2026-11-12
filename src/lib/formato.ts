@@ -62,6 +62,22 @@ export function haceCuanto(iso: string, ahora: Date = new Date()): string {
   return d === 1 ? 'hace 1 día' : `hace ${d} días`;
 }
 
+/** ISO en el futuro → "22 min" / "21 horas" / "2 días". Ya pasó → "un momento". */
+export function faltan(iso: string, ahora: Date = new Date()): string {
+  const min = Math.ceil((new Date(iso).getTime() - ahora.getTime()) / 60000);
+  if (min <= 1) return 'un momento';
+  if (min < 60) return `${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return h === 1 ? '1 hora' : `${h} horas`;
+  const d = Math.round(h / 24);
+  return d === 1 ? '1 día' : `${d} días`;
+}
+
+/** "1500.00" → "Q1,500.00", como se escribe el dinero en Guatemala. */
+export function quetzales(monto: string | number): string {
+  return `Q${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(monto))}`;
+}
+
 /** Con signo: 25 → "+25", -10 → "−10". */
 export function conSigno(n: number): string {
   return n > 0 ? `+${numero(n)}` : n < 0 ? `−${numero(-n)}` : '0';

@@ -124,7 +124,8 @@ export function ListaPremios() {
   const [params, setParams] = useSearchParams();
   const estado = (params.get('estado') as EstadoPremio | null) ?? 'activos';
   const categoria = params.get('categoria') ?? '';
-  const [q, setQ] = useState('');
+  // Desde Comercios se llega con ?q=<comercio>.
+  const [q, setQ] = useState(params.get('q') ?? '');
   const [vuelta, setVuelta] = useState(0);
   const [importar, setImportar] = useState(false);
   const [aviso, setAviso] = useState<{ tono: 'success' | 'danger'; texto: string }>();

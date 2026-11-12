@@ -221,3 +221,47 @@ Cada branch sale de la anterior: A44 → A47 → A46 → A48 → A49 → A45.
 - [ ] **Juntar A49 y A45 en `dev`** cuando las revisen.
 - [ ] **Conexión con la API:** los endpoints de `PENDIENTES_BACKEND.md`. Cada
       uno que exista se conecta agregando su sección en `VITE_DATOS_API`.
+
+---
+
+## 5. Cambios del 11 de noviembre (branch `A53-admin-soporte-temporadas`)
+
+Sale de A45. Todo sigue con datos de muestra; lo que el backend necesita está en
+`PENDIENTES_BACKEND.md` (§0, §2, §3 y §9 a §14).
+
+### Puesto al día con el contrato (7 y 8 nov)
+- **La Liga va por temporada**, no por mes. Octubre de 2026 fue el último mes y
+  la primera temporada cuenta del 1 nov 2026 al 3 ene 2027. Se cierra el martes
+  de la temporada nueva y el podio se paga el martes siguiente. El nombre
+  ("Liga Nike") es por temporada. Las cuentas están en `src/datos/temporadas.ts`.
+- **Patrocinios de La Liga:** cubren la temporada entera.
+- **Nombre de miembro** (`ana.lopez`): en la lista de usuarios, la ficha, la
+  tabla de La Liga y el buscador (con o sin "@").
+- **Ficha:** nombre del registro, foto, correo verificado y sesiones abiertas.
+- **Sync:** si la app manda el total de Apple Salud (`pasos_por_hora`) y qué
+  días se calculan con él.
+
+### Pantallas nuevas
+- **Ficha del usuario:** cerrar sus sesiones, desactivar o reactivar, dar de
+  baja (pide escribir el `usuario_id`) y ver el consentimiento.
+- **Pólizas:** liberar una verificada, corregir la fecha de nacimiento y
+  desbloquear una póliza bloqueada por intentos.
+- **Retroactivo:** restituir lo anulado cuando fue un error.
+- **Puntos:** revertir un día (dentro de los 14 días).
+- **Antifraude (`/antifraude`):** cuentas para revisar, días atípicos, mismos
+  datos en varias cuentas, e intentos y bloqueos.
+- **Tus Ligas (`/tus-ligas`):** cambiar un nombre o borrar un grupo.
+- **Comercios (`/comercios`):** contacto, contrato y cuota mensual.
+- **Mi cuenta (`/mi-cuenta`):** qué puede tu rol y doble factor. El login pide
+  el código si la cuenta lo tiene.
+
+### Decisiones tomadas aquí, por confirmar
+- **Soporte** puede cerrar sesiones y desbloquear; todo lo demás nuevo es de
+  admin.
+- **Toda acción nueva pide motivo**, que queda en la bitácora.
+- **Liberar una póliza** la deja como rechazada con motivo "liberada".
+- **Restituir un retroactivo** no cambia el veredicto guardado.
+
+### Pendiente
+- [ ] Póliza cancelada o suspendida después de verificada: falta la decisión.
+- [ ] Juntar A49, A45 y A53 en `dev`.

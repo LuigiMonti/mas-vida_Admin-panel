@@ -24,6 +24,7 @@ const MENSAJES: Record<string, string> = {
   demasiado_grande: 'Lo que se envió es demasiado grande.',
   cierre_en_curso: 'Hay otro cierre en curso. Espera a que termine.',
   sin_permiso: 'Tu rol no puede hacer esto.',
+  requiere_2fa: 'Escribe el código de tu app de autenticación.',
 };
 
 type Metodo = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';

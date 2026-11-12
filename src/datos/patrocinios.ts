@@ -3,7 +3,9 @@
  *
  * Tres cosas que un comercio puede comprar (4 oct 2026):
  *   semana    → paga un cupón a quien completa esa semana (lunes a domingo)
- *   liga      → paga un cupón al podio de La Liga de ese mes (día 1 al último)
+ *   liga      → paga un cupón al podio de La Liga de ese ciclo. Va de punta a
+ *               punta del ciclo: la temporada entera (8 nov 2026). Octubre
+ *               de 2026 fue el último ciclo por mes (ver temporadas.ts)
  *   destacado → su premio sale destacado en el catálogo (cualquier rango)
  * La marca, el logo y el fondo salen del premio; aquí van el periodo, el
  * cupón y el color de acento. Un patrocinio no se borra: se apaga.
@@ -16,6 +18,9 @@ import { conectado } from './modo';
 import { premioMock, premiosMock, registrarNumerosDePremio } from './premios';
 import { copia, ErrorPanel, hoyGT, simularRed } from './red';
 import { puede } from './sesion';
+import { cicloDeLiga, ciclosDeLiga, PRIMER_CICLO_LIGA, sumarDias, ultimoDelMes, type TipoCiclo } from './temporadas';
+
+export { sumarDias, ultimoDelMes };
 
 export type TipoPatrocinio = 'semana' | 'liga' | 'destacado';
 
@@ -53,17 +58,7 @@ export interface ReportePatrocinio {
 const HOY = hoyGT();
 export const SEASON = { numero: 4, anio: 2026, fecha_inicio: '2026-09-28', fecha_fin: '2027-01-03' };
 
-export function sumarDias(f: string, dias: number): string {
-  const d = new Date(`${f}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + dias);
-  return d.toISOString().slice(0, 10);
-}
-
 const diaSemana = (f: string) => new Date(`${f}T12:00:00Z`).getUTCDay(); // 0 domingo, 1 lunes
-export function ultimoDelMes(f: string): string {
-  const [y, m] = f.split('-').map(Number) as [number, number];
-  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
-}
 
 /* ================================================================= mock */
 
@@ -79,8 +74,9 @@ function agregar(tipo: TipoPatrocinio, nombrePremio: string, desde: string, hast
 agregar('semana', 'Ookii', '2026-09-28', '2026-10-04', '2x1 en sushi', '#C8102E');
 agregar('semana', 'Ookii', '2026-10-26', '2026-11-01', '2x1 en sushi', '#C8102E');
 agregar('semana', 'Smart Fit', '2026-11-16', '2026-11-22', 'Una semana gratis', '#FFC20E');
-agregar('liga', 'Smart Fit', '2026-09-01', '2026-09-30', 'Un mes gratis', '#FFC20E');
-agregar('liga', 'Sportcity', '2026-11-01', '2026-11-30', 'Q100 de descuento');
+// La Liga: octubre de 2026 (el último mes) y la temporada que cuenta desde el 1 nov.
+agregar('liga', 'Smart Fit', '2026-10-01', '2026-10-31', 'Un mes gratis', '#FFC20E');
+agregar('liga', 'Sportcity', '2026-11-01', '2027-01-03', 'Q100 de descuento');
 agregar('destacado', 'Ookii', '2026-10-01', '2026-12-31', '');
 agregar('destacado', 'Smart Fit', '2026-10-01', '2026-12-31', '');
 
@@ -88,9 +84,14 @@ const vigenteHoy = (p: Patrocinio) => p.activo && p.desde <= HOY && HOY <= p.has
 
 registrarNumerosDePremio((id) => ({ destacado: patrocinios.some((p) => p.tipo === 'destacado' && p.premio_id === id && vigenteHoy(p)) }));
 
-/** Para liga.ts (mock): el patrocinio de La Liga de un mes. */
-export function patrocinioDeLigaMock(mes: string): Patrocinio | undefined {
-  return patrocinios.find((p) => p.tipo === 'liga' && p.activo && p.desde === mes);
+/** Para liga.ts (mock): el patrocinio de La Liga del ciclo que empieza ese día. */
+export function patrocinioDeLigaMock(inicio: string): Patrocinio | undefined {
+  return patrocinios.find((p) => p.tipo === 'liga' && p.activo && p.desde === inicio);
+}
+
+/** Para comercios.ts (mock): cuántos patrocinios vigentes o por venir tiene un comercio. */
+export function patrociniosVigentesMock(comercio: string): number {
+  return patrocinios.filter((p) => p.activo && p.comercio === comercio && p.hasta >= HOY).length;
 }
 
 /* ================================================================= calendario */
@@ -103,16 +104,18 @@ export interface SemanaCalendario {
   ya_paso: boolean;
 }
 
-export interface MesCalendario {
-  mes: string;
-  hasta: string;
+/** Un ciclo de La Liga: la temporada (o el mes, hasta octubre de 2026). */
+export interface CicloCalendario {
+  inicio: string;
+  fin: string;
+  ciclo: TipoCiclo;
   patrocinio: Patrocinio | null;
   ya_paso: boolean;
 }
 
 export interface Calendario {
   semanas: SemanaCalendario[];
-  meses: MesCalendario[];
+  ligas: CicloCalendario[];
   destacados: Patrocinio[];
 }
 
@@ -126,15 +129,15 @@ export function obtenerCalendario(): Promise<Calendario> {
       const hasta = sumarDias(desde, 6);
       semanas.push({ numero: i + 1, desde, hasta, patrocinio: patrocinios.find((p) => p.tipo === 'semana' && p.activo && p.desde === desde) ?? null, ya_paso: hasta < HOY });
     }
-    const meses: MesCalendario[] = [];
-    let mes = '2026-09-01';
-    for (let i = 0; i < 7; i++) {
-      const hasta = ultimoDelMes(mes);
-      meses.push({ mes, hasta, patrocinio: patrocinioDeLigaMock(mes) ?? null, ya_paso: hasta < HOY });
-      mes = sumarDias(hasta, 1);
-    }
+    const ligas: CicloCalendario[] = ciclosDeLiga(PRIMER_CICLO_LIGA, 5).map((c) => ({
+      inicio: c.inicio,
+      fin: c.fin,
+      ciclo: c.ciclo,
+      patrocinio: patrocinioDeLigaMock(c.inicio) ?? null,
+      ya_paso: c.fin < HOY,
+    }));
     const destacados = patrocinios.filter((p) => p.tipo === 'destacado').sort((a, b) => b.desde.localeCompare(a.desde));
-    return copia({ semanas, meses, destacados });
+    return copia({ semanas, ligas, destacados });
   });
 }
 
@@ -149,13 +152,16 @@ export function validarPatrocinio(d: DatosPatrocinio, existentes: readonly Patro
   if (d.desde && d.hasta && !e.hasta) {
     if (d.tipo === 'semana' && (diaSemana(d.desde) !== 1 || d.hasta !== sumarDias(d.desde, 6)))
       e.desde = 'Una semana va de lunes a domingo: «desde» es el lunes y «hasta» el domingo.';
-    if (d.tipo === 'liga' && (!d.desde.endsWith('-01') || d.hasta !== ultimoDelMes(d.desde))) e.desde = 'Un mes de La Liga va del día 1 al último día del mes.';
+    if (d.tipo === 'liga') {
+      const c = cicloDeLiga(d.desde);
+      if (!c || c.inicio !== d.desde || c.fin !== d.hasta) e.desde = 'Un patrocinio de La Liga va de punta a punta de su ciclo: la temporada completa.';
+    }
   }
   if (d.tipo !== 'destacado') {
     if (!d.cupon.trim()) e.cupon = 'Hace falta el texto del cupón que se gana.';
     if (p && !p.foto) e.premio_id = 'El comercio necesita logo (campo foto del premio).';
     if (!e.desde && existentes.some((x) => x.tipo === d.tipo && x.desde === d.desde && x.activo))
-      e.desde = d.tipo === 'semana' ? 'Esa semana ya está vendida.' : 'Ese mes de La Liga ya está vendido.';
+      e.desde = d.tipo === 'semana' ? 'Esa semana ya está vendida.' : 'Esa temporada de La Liga ya está vendida.';
   }
   if (d.cupon.length > 150) e.cupon = 'Máximo 150 caracteres.';
   if (d.acento && !/^#[0-9a-fA-F]{6}$/.test(d.acento)) e.acento = 'Como #RRGGBB.';
@@ -195,7 +201,7 @@ export function reportePatrocinio(id: number): Promise<ReportePatrocinio> {
     const p = patrocinios.find((x) => x.id === id);
     if (!p) throw new ErrorPanel('Ese patrocinio no existe.', undefined, { estado: 404 });
     if (p.tipo === 'destacado') return { ganados: 0, usados: 0, vencidos: 0, activos: 0 };
-    // Los cupones se dan al cerrar: el martes después de la semana, o el día 9 del mes siguiente.
+    // Los cupones se dan al cerrar la semana (el martes) o al pagar el podio (9 días después del ciclo).
     const hastaPago = p.tipo === 'semana' ? sumarDias(p.hasta, 3) : sumarDias(p.hasta, 10);
     const de = cuponesMock().filter((c) => c.premio_id === p.premio_id && c.origen === p.tipo && c.fecha_canje.slice(0, 10) > p.hasta && c.fecha_canje.slice(0, 10) <= hastaPago);
     const vencido = (c: (typeof de)[number]) => c.estado === 'expirado' || (c.estado === 'activo' && c.fecha_expiracion_cupon < HOY);

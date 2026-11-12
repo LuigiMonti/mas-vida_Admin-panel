@@ -1,8 +1,10 @@
+import { contarBloqueadosDeMuestra, contarParaRevisarDeMuestra } from './antifraude';
 import { ultimaCorrida } from './cierres';
 import { contarSemanasPendientes } from './objetivos';
 import { pedir } from './api';
 import { conectado } from './modo';
-import { simularRed } from './red';
+import { hoyGT, simularRed } from './red';
+import { sumarDias } from './temporadas';
 
 /**
  * Lo que muestra el inicio: las métricas rápidas y lo que pide atención.
@@ -28,6 +30,16 @@ export interface ResumenPanel {
   };
   /** Sin VersionRegla activa el sync responde 500. */
   version_regla_activa: string | null;
+  /** Antifraude: cuentas con algo que revisar y límites de intentos bloqueados ahora. */
+  antifraude: { para_revisar: number; bloqueados: number };
+}
+
+/** El próximo martes 00:00 (hora de Guatemala), como lo escribe el panel. */
+function proximoCierre(): string {
+  let f = sumarDias(hoyGT(), 1);
+  while (new Date(`${f}T12:00:00Z`).getUTCDay() !== 2) f = sumarDias(f, 1);
+  const t = new Intl.DateTimeFormat('es-GT', { timeZone: 'UTC', day: 'numeric', month: 'short' }).format(new Date(`${f}T12:00:00Z`)).replace('.', '');
+  return `Martes ${t} · 00:00`;
 }
 
 export function obtenerResumen(): Promise<ResumenPanel> {
@@ -47,9 +59,10 @@ export function obtenerResumen(): Promise<ResumenPanel> {
         ultima_corrida: ultima?.empezo ?? null,
         ultima_corrida_ok: ultima?.estado !== 'fallo',
         semanas_pendientes: contarSemanasPendientes(),
-        proximo: 'Martes 10 nov · 00:00',
+        proximo: proximoCierre(),
       },
       version_regla_activa: 'v3',
+      antifraude: { para_revisar: contarParaRevisarDeMuestra(), bloqueados: contarBloqueadosDeMuestra() },
     };
   });
 }

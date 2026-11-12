@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router';
 import {
   CalendarCheck,
   CalendarClock,
@@ -14,8 +14,11 @@ import {
   LogOut,
   Menu,
   RotateCcw,
+  ShieldAlert,
   SlidersHorizontal,
+  Store,
   Users,
+  UsersRound,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -41,6 +44,7 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
       { to: '/usuarios', label: 'Usuarios', icon: Users },
       { to: '/polizas', label: 'Pólizas', icon: FileCheck2 },
       { to: '/retroactivo', label: 'Retroactivo denegado', icon: RotateCcw },
+      { to: '/antifraude', label: 'Antifraude', icon: ShieldAlert },
     ],
   },
   {
@@ -49,6 +53,7 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
       { to: '/objetivos', label: 'Semanas y metas', icon: CalendarCheck },
       { to: '/cierres', label: 'Estado del cierre', icon: CalendarClock },
       { to: '/liga', label: 'La Liga', icon: Trophy },
+      { to: '/tus-ligas', label: 'Tus Ligas', icon: UsersRound },
     ],
   },
   {
@@ -58,6 +63,7 @@ export const NAV: Array<{ group?: string; items: NavItem[] }> = [
       { to: '/cupones', label: 'Cupones', icon: Ticket },
       { to: '/estadisticas', label: 'Estadísticas de canje', icon: ChartColumn },
       { to: '/patrocinios', label: 'Patrocinios', icon: Handshake },
+      { to: '/comercios', label: 'Comercios', icon: Store },
     ],
   },
   {
@@ -137,7 +143,7 @@ function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
             ir(q ? `/usuarios?q=${encodeURIComponent(q)}` : '/usuarios');
           }}
         >
-          <SearchInput name="q" placeholder="Buscar usuario, usuario_id o póliza" aria-label="Buscar" />
+          <SearchInput name="q" placeholder="Buscar por nombre, correo, nombre de miembro o póliza" aria-label="Buscar" />
         </form>
         <div className="ml-auto flex items-center gap-3">
           {modo !== 'api' && (
@@ -168,7 +174,9 @@ function Header({ tabs, menuOpen, onToggleMenu }: HeaderProps) {
                   </select>
                 )}
               </div>
-              <Avatar name={sesion.nombre} seed={sesion.correo} />
+              <Link to="/mi-cuenta" aria-label="Mi cuenta" title="Mi cuenta y doble factor" className="rounded-full transition-opacity hover:opacity-80">
+                <Avatar name={sesion.nombre} seed={sesion.correo} />
+              </Link>
               <button
                 type="button"
                 onClick={async () => {

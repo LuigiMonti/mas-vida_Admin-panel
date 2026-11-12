@@ -108,9 +108,12 @@ export function PremioCard({ nombre, categoria, costoMonedas, logoUrl, comercio,
 /* ---------------------------------------------------------------- La Liga */
 
 interface LigaBannerProps {
-  mes: string;
-  /** El nombre del mes ("Liga Nike"). Vacío = "Compite por puntos del mes". */
+  /** Lo que va después de "La Liga ·": "temporada 4" (u "octubre", en el último ciclo por mes). */
+  periodo: string;
+  /** El nombre del ciclo ("Liga Nike"). Vacío = el texto por defecto. */
   nombre?: string;
+  /** Texto por defecto cuando no tiene nombre. */
+  sinNombre?: string;
   /** Monedas del podio: 1.º, 2.º, 3.º. */
   podio: [number, number, number];
   /** El cupón que suma el patrocinador al podio. */
@@ -118,14 +121,14 @@ interface LigaBannerProps {
   cierre: string;
 }
 
-/** Banner de La Liga del mes: "La Liga · noviembre" arriba y el nombre del mes abajo. */
-export function LigaBanner({ mes, nombre, podio, cuponPatrocinador, cierre }: LigaBannerProps) {
+/** Banner de La Liga: "La Liga · temporada 4" arriba y el nombre del ciclo abajo. */
+export function LigaBanner({ periodo, nombre, sinNombre = 'Compite por puntos de la temporada', podio, cuponPatrocinador, cierre }: LigaBannerProps) {
   return (
     <div className="relative overflow-hidden rounded-card p-6 text-white" style={{ backgroundImage: 'var(--gradient-banner)' }}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="text-[12px] font-bold tracking-[0.12em] text-white/70 uppercase">La Liga · {mes}</div>
-          <h3 className="mt-1 font-display text-2xl font-bold tracking-tight break-words">{nombre?.trim() || 'Compite por puntos del mes'}</h3>
+          <div className="text-[12px] font-bold tracking-[0.12em] text-white/70 uppercase">La Liga · {periodo}</div>
+          <h3 className="mt-1 font-display text-2xl font-bold tracking-tight break-words">{nombre?.trim() || sinNombre}</h3>
           <p className="mt-1 text-[13px] text-white/75">{cierre}</p>
         </div>
         {cuponPatrocinador?.logo ? (

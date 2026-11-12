@@ -33,7 +33,7 @@ export interface Cupon {
   /** Fondo detrás del logo ("#RRGGBB" o vacío). */
   fondo: string;
   origen: OrigenCupon;
-  /** "Semana 3", "La Liga de octubre". Vacío en los de la tienda. */
+  /** "Semana 3", "La Liga de octubre", "La Liga · temporada 4". Vacío en los de la tienda. */
   ganado_en: string;
   costo_monedas: number;
   fecha_canje: string;
@@ -110,13 +110,13 @@ const cupones: Cupon[] = [];
       usado_por: usado ? 'soporte@masvidaapp.com' : null,
     });
   }
-  // Semanas patrocinadas por Ookii (semanas 1 y 5) y podio de La Liga de septiembre.
+  // Semanas patrocinadas por Ookii (semanas 1 y 5) y podio de La Liga de octubre.
   const ookii = lista.find((p) => p.nombre === 'Ookii')!;
   const smart = lista.find((p) => p.nombre === 'Smart Fit')!;
   const ganados: Array<[typeof ookii, OrigenCupon, string, string, string, number]> = [
     [ookii, 'semana', 'Semana 1', '2x1 en sushi', '2026-10-06', 9],
     [ookii, 'semana', 'Semana 5', '2x1 en sushi', '2026-11-03', 7],
-    [smart, 'liga', 'La Liga de septiembre', 'Un mes gratis', '2026-10-09', 3],
+    [smart, 'liga', 'La Liga de octubre', 'Un mes gratis', '2026-11-09', 3],
   ];
   for (const [p, origen, donde, beneficio, fecha, cuantos] of ganados) {
     for (let i = 0; i < cuantos; i++) {
