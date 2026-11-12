@@ -148,6 +148,12 @@ basta con que el endpoint exista con esa forma.
       hoy se hace editando la póliza en el admin de Django. Vale desde hoy;
       el veredicto no cambia. Solo `admin`. Sumar hacia atrás no es un
       endpoint: es un ajuste del ledger, caso por caso.
+- [ ] **Póliza cancelada o suspendida después de verificada** (decisión del
+      11 nov): por ahora **se pierde todo**, como con el retroactivo denegado
+      (puntos y monedas anulados). El panel todavía no tiene esta pantalla.
+      **Falta definir** al conectar: si se anula todo lo acumulado o solo lo
+      posterior a la cancelación, qué estado queda en la póliza y si se puede
+      restituir.
 
 ## 3. Soporte de sync (A47)
 
