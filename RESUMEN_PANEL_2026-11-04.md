@@ -255,13 +255,28 @@ Sale de A45. Todo sigue con datos de muestra; lo que el backend necesita está e
 - **Mi cuenta (`/mi-cuenta`):** qué puede tu rol y doble factor. El login pide
   el código si la cuenta lo tiene.
 
-### Decisiones tomadas aquí, por confirmar
+### Decisiones tomadas aquí (confirmadas el 11 nov)
 - **Soporte** puede cerrar sesiones y desbloquear; todo lo demás nuevo es de
   admin.
 - **Toda acción nueva pide motivo**, que queda en la bitácora.
 - **Liberar una póliza** la deja como rechazada con motivo "liberada".
 - **Restituir un retroactivo** no cambia el veredicto guardado.
+- **Póliza cancelada o suspendida después de verificada: se pierde todo.** La
+  persona pierde sus puntos y monedas, igual que con el retroactivo denegado.
+  Es la decisión por ahora; el detalle (si se anula todo lo acumulado o solo
+  lo posterior a la cancelación, y si se puede restituir) queda para cuando se
+  conecte con el backend. Está anotado en `PENDIENTES_BACKEND.md` (§2).
+
+### Comercios
+- **Los comercios no se crean en su pantalla.** La lista sale de los premios:
+  cada nombre distinto en el campo "Comercio" de un premio es un comercio, y
+  `/comercios` solo edita su ficha (contacto, contrato, cuota, notas). Para que
+  aparezca uno nuevo se crea un premio con ese nombre.
+- El nombre es texto libre: "Pizza Hut" y "Pizzahut" cuentan como dos
+  comercios. Cuando exista el modelo `Comercio` en el backend
+  (`PENDIENTES_BACKEND.md` §13) se podrá crear desde su pantalla.
 
 ### Pendiente
-- [ ] Póliza cancelada o suspendida después de verificada: falta la decisión.
-- [ ] Juntar A49, A45 y A53 en `dev`.
+- [x] Juntar A49, A45 y A53 en `dev` (hecho el 11 nov).
+- [ ] Conexión con el backend: es el siguiente paso, siguiendo
+      `PENDIENTES_BACKEND.md`.
